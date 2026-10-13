@@ -105,6 +105,10 @@ class HudApi:
         if self._app.flowbar:
             self._app.flowbar.save_place(place)
 
+    def grab(self):
+        if self._app.flowbar:
+            self._app.flowbar.grab()
+
     def drag_end(self):
         if self._app.flowbar:
             self._app.flowbar.drag_end()

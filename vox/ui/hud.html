@@ -484,28 +484,35 @@
     const r = pill.getBoundingClientRect();
     drag = { sx: e.clientX, sy: e.clientY, dx: r.left + r.width / 2 - e.clientX, dy: r.top + r.height / 2 - e.clientY, moved: false,
              copy: !els.copy.hidden && !!e.target.closest("#copy") };
+    // WebKit sends a window that is never key a pointer move only about
+    // every 50 ms, so the pill followed in 19 px steps. Python reads the
+    // cursor at the display rate instead and calls follow() and release().
+    drag.native = !!(window.pywebview && window.pywebview.api && window.pywebview.api.grab);
+    if (drag.native) api("grab");
   });
-  pill.addEventListener("pointermove", (e) => {
+  function follow(x, y) {
     if (!drag) return;
     if (!drag.moved) {
-      if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) < 3) return;
+      if (Math.abs(x - drag.sx) + Math.abs(y - drag.sy) < 3) return;
       drag.moved = true;
       anchor.classList.remove("fly");
       pill.classList.add("dragging");
       buildGuides();
       guides.classList.add("on");
     }
-    const cx = e.clientX + drag.dx, cy = e.clientY + drag.dy;
+    const cx = x + drag.dx, cy = y + drag.dy;
     setAnchor(cx, cy, "drag");
     drag.target = targetAt(cx, cy);
     turnTo(drag.target.edge);
     showGuides(drag.target);
-  });
+  }
+  pill.addEventListener("pointermove", (e) => { if (drag && !drag.native) follow(e.clientX, e.clientY); });
   function endDrag(e) {
-    if (!drag) return;
+    // With Python driving, only its release() ends the drag.
+    if (!drag || (drag.native && e)) return;
     const d = drag;
     drag = null;
-    try { pill.releasePointerCapture(e.pointerId); } catch (_) {}
+    try { if (e) pill.releasePointerCapture(e.pointerId); } catch (_) {}
     if (!d.moved) { api(d.copy ? "copy" : "clicked"); return; }
     // Drop the hover look now, inside the same animation as the landing;
     // left to Python's pointer poll it would shrink the pill a moment later.
@@ -527,6 +534,10 @@
     dock: (edge) => { stage.dataset.dock = edge || "bottom"; apply(last); },
     hover: (on) => pill.classList.toggle("hover", !!on),
     drag: (on) => pill.classList.toggle("dragging", !!on),
+    // Python drives a drag in progress: the cursor in window CSS px, then
+    // the release.
+    follow: (x, y) => follow(x, y),
+    release: () => endDrag(null),
     // The pill's box in window CSS px, for Python's hit test.
     rect: () => { const r = pill.getBoundingClientRect(); return JSON.stringify([r.left, r.top, r.width, r.height]); },
     // Free mode: the window covers the screen; insets mark the usable part.

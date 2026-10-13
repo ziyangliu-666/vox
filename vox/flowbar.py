@@ -77,6 +77,8 @@ class FlowBar:
         self._hover = False
         self._last_app = None  # The app to give focus back to after a drag.
         self._insets = None
+        self._pending = None  # An area seen on one poll, not yet applied.
+        self._quiet_until = 0.0  # No area polls before this (after a drag).
         self.grabbable = True
 
     # ---- calls from the page (through HudApi) ------------------------------
@@ -88,7 +90,35 @@ class FlowBar:
         self.place = place
         self._on_save(place)
 
+    def grab(self) -> None:
+        """Feed the cursor to the page until the button is up (runs in a js_api thread)."""
+        self._quiet_until = time.monotonic() + 3600  # drag_end() shortens it.
+        frame = self.window.native.frame()
+        last = None
+        while AppKit.NSEvent.pressedMouseButtons() & 1:
+            loc = AppKit.NSEvent.mouseLocation()
+            x = loc.x - frame.origin.x
+            y = frame.size.height - (loc.y - frame.origin.y)
+            if (x, y) != last:
+                last = (x, y)
+                self._post(f"window.hud && window.hud.follow({x:.1f}, {y:.1f})")
+            time.sleep(1 / 120)
+        self.window.run_js("window.hud && window.hud.release()")
+
+    def _post(self, js: str) -> None:
+        """Run js without waiting for its result.
+
+        run_js waits for each call to come back from the page, about 20 ms
+        a call, which held the drag to some 20 updates a second. A drag
+        needs no answer, so hand the script straight to the WKWebView.
+        """
+        from webview.platforms.cocoa import BrowserView
+
+        view = BrowserView.instances[self.window.uid].webview
+        AppHelper.callAfter(view.evaluateJavaScript_completionHandler_, js, None)
+
     def drag_end(self) -> None:
+        self._quiet_until = time.monotonic() + 2.0
         # The press on the bar made vox the active app; the user was typing
         # somewhere else and expects to keep typing there.
         if self._last_app is not None:
@@ -106,7 +136,16 @@ class FlowBar:
     def _screen(self):
         return AppKit.NSScreen.screens()[0]
 
-    def _send_area(self) -> None:
+    def _send_area(self, force: bool = False) -> None:
+        """Send the usable area to the page when it really changed.
+
+        A press on the bar makes vox the active app, and after a drop focus
+        goes back to the user's app. In a full-screen Space, macOS reports
+        the plain desktop for a moment while that happens; a poll that
+        caught it moved the bar to the desktop place and, a second later,
+        back: the jump after a drop. So a new area must be seen on two polls
+        in a row, and polls pause during a drag and just after it.
+        """
         f = self._screen().frame()
         u = usable(self._screen())
         insets = {
@@ -118,7 +157,15 @@ class FlowBar:
         # macOS moves visibleFrame by a point or two now and then; following
         # that would twitch the bar. Only a real change (Dock, menu bar,
         # full screen) moves it.
-        if self._insets is None or any(abs(insets[k] - self._insets[k]) >= 4 for k in insets):
+        changed = self._insets is None or any(abs(insets[k] - self._insets[k]) >= 4 for k in insets)
+        if not changed:
+            self._pending = None
+            return
+        if not force and insets != self._pending:
+            self._pending = insets  # Seen once; wait for the next poll.
+            return
+        self._pending = None
+        if changed:
             print(f"[vox] flow bar area {insets}", flush=True)
             self._insets = insets
             self.window.run_js(f"window.hud && window.hud.area({json.dumps(insets)})")
@@ -132,7 +179,7 @@ class FlowBar:
     def sync_page(self) -> None:
         """Send the area and the saved place; also after the page reloads."""
         self._insets = None
-        self._send_area()
+        self._send_area(force=True)
         self.window.run_js(f"window.hud && window.hud.restore({json.dumps(self.place)})")
 
     def reset(self) -> None:
@@ -172,7 +219,7 @@ class FlowBar:
             down = AppKit.NSEvent.pressedMouseButtons() & 1
             if self._hover and down:
                 continue  # A drag is on: the page owns the pointer until release.
-            if tick % 60 == 0:
+            if tick % 60 == 0 and time.monotonic() > self._quiet_until:
                 # A full-screen app or the Dock came or went: follow the edge.
                 self._send_area()
             if not self._hover:
