@@ -19,8 +19,25 @@ import json
 import time
 
 import AppKit
+import objc
 import Quartz
 from PyObjCTools import AppHelper
+from webview.platforms.cocoa import BrowserView
+
+# PyObjC requires a category class to carry the name of the class it extends.
+class WebKitHost(objc.Category(BrowserView.WebKitHost)):
+    """Pass the first click to the page.
+
+    The bar window never becomes the key window, so to AppKit every click
+    on it is a "first mouse" click, and WKWebView by default only uses that
+    click to activate the window: the page never saw a press, and the pill
+    could not be clicked or dragged. Other vox windows lose nothing: a
+    click into them now also acts at once.
+    """
+
+    def acceptsFirstMouse_(self, event):
+        return True
+
 
 DOCK_LEVEL = 20  # kCGDockWindowLevel: the Dock strip itself.
 GRAB = 28  # Minimum hit size, so the thin idle pill is easy to grab.

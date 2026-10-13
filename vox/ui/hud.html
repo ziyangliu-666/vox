@@ -82,6 +82,9 @@
   /* Only left/top place the anchor: with top and bottom both set, its
      height would be 0, and translate(-50%, -100%) would not lift the pill. */
   .stage.free .anchor { display: block; position: absolute; }
+  /* .stage ignores the pointer, and the pill would inherit that. */
+  .stage.free .pill { pointer-events: auto; cursor: grab; }
+  .stage.free .pill.dragging { cursor: grabbing; }
   .anchor[data-edge="bottom"] { transform: translate(-50%, -100%); }
   .anchor[data-edge="top"] { transform: translate(-50%, 0); }
   .anchor[data-edge="left"] { transform: translate(0, -50%); }
