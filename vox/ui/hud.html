@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vox HUD</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* The HUD window must stay see-through. Only mock mode paints a backdrop. */
+  html, body { background: transparent !important; overflow: hidden; width: 100%; height: 100%; }
+
+  /* The capsule is dark in light and dark mode, so the white content keeps
+     high contrast over any app behind it. These tokens do not follow the
+     colour scheme on purpose. */
+  :root {
+    --hud-bg: rgba(22, 22, 25, 0.94);
+    --hud-idle: rgba(28, 28, 32, 0.72);
+    --hud-edge: rgba(255, 255, 255, 0.14);
+    --hud-fg: #ffffff;
+    --hud-fg-2: rgba(255, 255, 255, 0.66);
+    --hud-fg-3: rgba(255, 255, 255, 0.45);
+    --hud-chip: rgba(255, 255, 255, 0.14);
+    --hud-ok: #34d17a;
+    --hud-warn: #ffb547;
+    --hud-morph: 150ms cubic-bezier(0.3, 0.8, 0.2, 1);
+  }
+
+  /* Stage = the HUD window (300 x 72 by default). The pill sits on its
+     bottom edge with room above and at the sides for the shadow. */
+  .stage { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 14px; pointer-events: none; }
+
+  .pill {
+    position: relative;
+    height: 32px;
+    width: 46px;
+    border-radius: 999px;
+    background: var(--hud-bg);
+    box-shadow: 0 0 0 1px var(--hud-edge), 0 8px 24px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.18);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    backdrop-filter: blur(20px) saturate(1.4);
+    color: var(--hud-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: width var(--hud-morph), height var(--hud-morph), background var(--hud-morph), opacity 120ms ease, transform var(--hud-morph);
+  }
+
+  /* Idle: a small mark that vox runs. The light edge keeps it visible on
+     dark wallpapers; the low fill keeps it quiet on light ones. */
+  .pill[data-phase="idle"] { height: 10px; background: var(--hud-idle); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.38), 0 2px 6px rgba(0, 0, 0, 0.22); opacity: 0.9; }
+  .pill[data-phase="hidden"] { height: 10px; opacity: 0; transform: scale(0.8); }
+  .pill[data-phase="idle"] .content, .pill[data-phase="hidden"] .content { opacity: 0; transition: opacity 60ms ease; }
+
+  .content {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 1;
+    transition: opacity 120ms ease 60ms;
+  }
+  .content > [hidden] { display: none !important; }
+  .content.swap { animation: swap 140ms ease; }
+  @keyframes swap { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+  /* Live level: white bars, centre-weighted, driven by hud.level(). */
+  .bars { display: flex; align-items: center; gap: 2px; height: 20px; }
+  .bars i { display: block; width: 3px; height: 4px; border-radius: 2px; background: var(--hud-fg); }
+  .pill[data-phase="transcribing"] .bars i { opacity: 0.8; }
+  /* Toggle mode needs room for its hint: drop two bars at each end. */
+  .pill.toggle .bars i:nth-child(-n+2), .pill.toggle .bars i:nth-last-child(-n+2) { display: none; }
+
+  .hint { font-size: 12px; color: var(--hud-fg-2); display: inline-flex; align-items: center; gap: 4px; }
+  .chip { padding: 1px 5px; border-radius: 4px; background: var(--hud-chip); color: var(--hud-fg); font-size: 11px; line-height: 16px; }
+  .text { overflow: hidden; text-overflow: ellipsis; }
+  .tag { font-size: 11px; color: var(--hud-fg-3); }
+  .ico-ok { color: var(--hud-ok); }
+  .ico-warn { color: var(--hud-warn); }
+  .ico-x { color: rgba(255, 255, 255, 0.5); }
+  .ico svg { width: 15px; height: 15px; }
+  .ico-ok, .ico-x { animation: pop 300ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+  /* Mock mode only: a quiet desktop so screenshots show the bar in place. */
+  html.mock, html.mock body { background: linear-gradient(160deg, #c9ced6 0%, #aeb5c0 55%, #9aa2ae 100%) !important; }
+  @media (prefers-color-scheme: dark) {
+    html.mock, html.mock body { background: linear-gradient(160deg, #3a3f48 0%, #2a2e35 60%, #22252b 100%) !important; }
+  }
+  html.mock .fake-window {
+    position: fixed; left: 50%; top: 40px; transform: translateX(-50%);
+    width: min(560px, 80vw); height: calc(100vh - 170px);
+    border-radius: 12px; background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+    padding: 52px 40px; color: #3a3d44; font-size: 14px; line-height: 1.6;
+  }
+  @media (prefers-color-scheme: dark) { html.mock .fake-window { background: rgba(40, 42, 47, 0.9); color: #c9ccd2; } }
+  html.mock .fake-window .ln { height: 9px; border-radius: 5px; background: currentColor; opacity: 0.12; margin-bottom: 14px; }
+  html.mock .stage { inset: auto; left: 50%; bottom: 8px; width: 300px; height: 72px; transform: translateX(-50%); }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="pill" id="pill" data-phase="hidden" role="status" aria-live="polite">
+    <div class="content" id="content">
+      <span class="bars" id="bars" hidden></span>
+      <span class="ico ico-ok" id="ok" hidden><svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.8 8.3l2.1 2.1 4.3-4.6" stroke="#111" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="ico ico-warn" id="warn" hidden><svg viewBox="0 0 16 16" fill="none"><path d="M8 1.8l6.6 11.6H1.4L8 1.8z" fill="currentColor"/><path d="M8 6.3v3.2" stroke="#111" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.4" r="0.9" fill="#111"/></svg></span>
+      <span class="ico ico-x" id="x" hidden><svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8" stroke="#1a1a1d" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+      <span class="hint" id="hint" hidden></span>
+      <span class="text" id="text" hidden></span>
+      <span class="tag" id="tag" hidden></span>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const N = 12;
+  const IDLE_W = 46;
+
+  const stage = document.getElementById("stage");
+  const pill = document.getElementById("pill");
+  const content = document.getElementById("content");
+  const bars = document.getElementById("bars");
+  const KEYS = ["ok", "warn", "x", "hint", "text", "tag"];
+  const els = {};
+  KEYS.forEach((k) => { els[k] = document.getElementById(k); });
+  for (let i = 0; i < N; i++) bars.appendChild(document.createElement("i"));
+  const barEls = Array.from(bars.children);
+
+  // The pill may use the window width minus room for the shadow. If Python
+  // makes the HUD window wider, long text gets more room automatically.
+  const maxW = () => Math.max(120, stage.clientWidth - 28);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  let phase = "hidden";
+  let target = 0;   // last level from Python, 0..1
+  let shown = 0;    // smoothed level
+  let raf = 0;
+
+  // ---------- bars ----------
+  // Centre bars are taller than edge bars, so the shape reads as a voice and
+  // not as a flat meter. At silence the bars breathe by up to 3 px, so the
+  // bar never looks frozen (still dots read like a password field).
+  const env = barEls.map((_, i) => 0.4 + 0.6 * Math.sin(Math.PI * (i + 0.5) / N));
+  function frame(t) {
+    raf = 0;
+    if (phase === "listening") {
+      // Fast attack, slow release: speech onsets show at once, gaps fade.
+      const k = target > shown ? 0.55 : 0.18;
+      shown += (target - shown) * k;
+      const lv = Math.min(1, shown * 1.35);
+      barEls.forEach((b, i) => {
+        const breathe = 3 * (0.5 + 0.5 * Math.sin(t * 0.0035 + i * 0.55));
+        const wob = 0.72 + 0.28 * Math.sin(t * 0.011 + i * 1.9);
+        b.style.height = (4 + breathe + 14 * lv * env[i] * wob).toFixed(1) + "px";
+      });
+    } else if (phase === "transcribing") {
+      // The bars settle into a low travelling wave: "working", no words.
+      barEls.forEach((b, i) => {
+        const w = 0.5 + 0.5 * Math.sin(t * 0.009 - i * 0.65);
+        b.style.height = (4 + 6 * w).toFixed(1) + "px";
+      });
+    } else {
+      return;
+    }
+    raf = requestAnimationFrame(frame);
+  }
+  const loop = () => { if (!raf) raf = requestAnimationFrame(frame); };
+
+  // ---------- text fitting ----------
+  // Done text keeps its END visible ("…the last words"), so the user can
+  // check how a long or Chinese sentence finished. Array.from keeps emoji
+  // and other surrogate pairs whole.
+  function fitHead(el, full, avail) {
+    el.style.maxWidth = "none";
+    el.textContent = full;
+    if (el.scrollWidth <= avail) return;
+    const chars = Array.from(full);
+    let lo = 1, hi = chars.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      el.textContent = "…" + chars.slice(mid).join("");
+      if (el.scrollWidth <= avail) hi = mid; else lo = mid + 1;
+    }
+    el.textContent = "…" + chars.slice(lo).join("");
+  }
+
+  // ---------- phases ----------
+  function show(map) {
+    bars.hidden = !map.bars;
+    KEYS.forEach((k) => {
+      const v = map[k];
+      els[k].hidden = !v;
+      if (k === "hint") els.hint.innerHTML = typeof v === "string" ? v : "";
+      else if (typeof v === "string") els[k].textContent = v;
+    });
+  }
+
+  function apply(p) {
+    const next = p && p.phase ? p.phase : "hidden";
+    const changed = next !== phase;
+    phase = next;
+    const cap = maxW();
+
+    if (next === "listening") {
+      // Toggle mode shows how to stop and cancel. Hold mode needs no hint:
+      // the user's finger is already on the key.
+      const hint = p.mode === "toggle"
+        ? (p.key ? `<span class="chip">${esc(p.key)}</span>to stop ·<span class="chip">esc</span>to cancel` : "Press again to stop")
+        : "";
+      show({ bars: true, hint });
+      if (changed) { shown = 0; target = 0; }
+    } else if (next === "transcribing") {
+      show({ bars: true });
+    } else if (next === "done") {
+      const tag = p.output === "copy" ? "Copied" : p.output === "paste" ? "Pasted" : "";
+      show({ ok: true, text: " ", tag });
+      els.text.textContent = "";
+      const avail = cap - Math.ceil(content.scrollWidth);
+      fitHead(els.text, (p.text || "").replace(/\s+/g, " ").trim() || "Done", avail);
+    } else if (next === "error") {
+      show({ warn: true, text: " " });
+      els.text.textContent = "";
+      els.text.style.maxWidth = (cap - Math.ceil(content.scrollWidth)) + "px";
+      els.text.textContent = p.message || "Something went wrong";
+    } else if (next === "cancelled") {
+      show({ x: true });
+    } else {
+      show({});
+    }
+
+    pill.classList.toggle("toggle", next === "listening" && p.mode === "toggle");
+    pill.dataset.phase = next;
+    pill.setAttribute("aria-label", { listening: "Listening", transcribing: "Transcribing", done: "Done", cancelled: "Cancelled", error: p.message || "Error" }[next] || "");
+
+    // Size the pill to its content so width can animate (auto cannot).
+    if (next === "idle" || next === "hidden") pill.style.width = IDLE_W + "px";
+    else pill.style.width = Math.min(cap, Math.ceil(content.scrollWidth)) + "px";
+
+    if (changed && next !== "idle" && next !== "hidden") {
+      content.classList.remove("swap"); void content.offsetWidth; content.classList.add("swap");
+    }
+    if (next === "listening" || next === "transcribing") loop();
+  }
+
+  let external = false;
+  window.hud = {
+    set: (p) => { external = true; stopMock(); apply(p || {}); },
+    level: (x) => { external = true; target = Math.max(0, Math.min(1, Number(x) || 0)); },
+  };
+
+  // ---------- mock (plain browser, or "?mock") ----------
+  let mockTimer = 0;
+  function stopMock() { if (mockTimer) { clearInterval(mockTimer); mockTimer = 0; } }
+  function startMock() {
+    document.documentElement.classList.add("mock");
+    const fw = document.createElement("div");
+    fw.className = "fake-window";
+    fw.innerHTML = '<div class="ln" style="width:42%;opacity:.22;height:14px;margin-bottom:26px"></div>' +
+      [92, 86, 95, 60, 0, 88, 79, 93, 40].map((w) => w ? `<div class="ln" style="width:${w}%"></div>` : '<div style="height:14px"></div>').join("");
+    document.body.insertBefore(fw, document.body.firstChild);
+
+    const key = "Right ⌥";
+    const presets = {
+      idle: { phase: "idle" },
+      listening: { phase: "listening", mode: "hold", key },
+      listening_silent: { phase: "listening", mode: "hold", key, silent: true },
+      listening_toggle: { phase: "listening", mode: "toggle", key },
+      transcribing: { phase: "transcribing", key },
+      done: { phase: "done", output: "paste", key, text: "Let's move the review to Thursday afternoon, if that works for everyone." },
+      done_copy: { phase: "done", output: "copy", key, text: "Remind me to send the invoice to Marta before Friday." },
+      // CJK sample, escaped so the source stays ASCII: checks Chinese layout in the pill.
+      done_long_zh: { phase: "done", output: "paste", key, text: "\u6211\u4eec\u628a\u8bc4\u5ba1\u4f1a\u6539\u5230\u5468\u56db\u4e0b\u5348\u5427\uff0c\u5982\u679c\u5927\u5bb6\u90fd\u65b9\u4fbf\u7684\u8bdd\uff0c\u6211\u660e\u5929\u4e0a\u5348\u628a\u8bae\u7a0b\u53d1\u51fa\u6765\u3002" },
+      cancelled: { phase: "cancelled", key },
+      error: { phase: "error", key, message: "Not logged in" },
+      error_retry: { phase: "error", key, message: "Network error · Retry in menu" },
+      hidden: { phase: "hidden" },
+    };
+    const load = () => {
+      stopMock();
+      const name = (location.hash || "#listening").slice(1);
+      const p = presets[name] || presets.listening;
+      // Start from idle so the expand is visible on load.
+      apply({ phase: "idle" });
+      setTimeout(() => apply(p), name === "idle" ? 0 : 250);
+      if (p.phase === "listening" && !p.silent) {
+        // Fake speech: syllable bursts with short pauses.
+        let t = 0;
+        mockTimer = setInterval(() => {
+          t += 1;
+          const syll = Math.max(0, Math.sin(t * 0.9)) * (0.5 + 0.5 * Math.sin(t * 0.13));
+          const pause = (t % 46) > 38 ? 0.05 : 1;
+          target = Math.min(1, (0.15 + 0.85 * syll) * pause * (0.75 + Math.random() * 0.25));
+        }, 50);
+      }
+    };
+    window.addEventListener("hashchange", load);
+    load();
+  }
+
+  // "?mock" forces the mock, also inside pywebview, for screenshots.
+  if (new URLSearchParams(location.search).has("mock")) startMock();
+  else setTimeout(() => { if (!external && !window.pywebview) startMock(); }, 300);
+})();
+</script>
+</body>
+</html>

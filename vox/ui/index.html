@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vox</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Step "Try it": one line with a live keycap in it. */
+  .try { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-lg); color: var(--text-2); flex-wrap: wrap; }
+  .try .keys { margin: 0 2px; }
+  .view-enter { animation: reveal var(--t-slow) var(--ease-out); }
+  .step.done .step-num { animation: none; }
+  .step.just .step-num { animation: pop var(--t-slow) var(--ease-out); }
+  .cancel-key { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-2); padding: 2px 4px; border-radius: var(--r-sm); }
+  .cancel-key:hover { color: var(--text); }
+</style>
+</head>
+<body class="main">
+<div class="app" id="app">
+  <section id="top"></section>
+  <section id="settings"></section>
+  <section id="recent"></section>
+  <footer class="footer" id="footer"></footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- icons ----------
+  const I = {
+    check: '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2l2.3 2.3 4.7-4.9"/></svg>',
+    checkBig: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.3l2.6 2.6 5.4-5.8"/></svg>',
+    copy: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="4.5" width="7" height="7" rx="1.6"/><path d="M9.5 4.5V3.6c0-.9-.7-1.6-1.6-1.6H3.6C2.7 2 2 2.7 2 3.6v4.3c0 .9.7 1.6 1.6 1.6h.9"/></svg>',
+    pencil: '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M7.8 2.2l2 2L4.3 9.7 1.8 10.2l.5-2.5z"/></svg>',
+    warn: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1.8l6.6 11.6H1.4L8 1.8z" fill="currentColor"/><path d="M8 6.3v3.2" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.4" r="0.9" fill="var(--bg)"/></svg>',
+  };
+
+  // ---------- helpers ----------
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const PERMS = [
+    { id: "microphone", name: "Microphone", sub: "To hear you", why: "Records your voice while the key is down." },
+    { id: "accessibility", name: "Accessibility", sub: "To type for you", why: "Pastes the text into the app you use." },
+    { id: "input_monitoring", name: "Input Monitoring", sub: "To see the hotkey", why: "Sees the hotkey while other apps have focus." },
+  ];
+
+  // "unknown" counts as fine: some systems cannot report it, and a step that
+  // can never turn green would block the set-up view forever.
+  const permsOk = (s) => s.platform !== "mac" || PERMS.every((p) => (s.permissions || {})[p.id] !== "missing");
+
+  // Keycaps. "Right ⌥" draws as one key with the symbol top-right and the
+  // side word bottom-left, like a real Mac key. "Ctrl + Space" draws as two.
+  function keycaps(label) {
+    return String(label || "").split(" + ").map((p) => {
+      const m = /^(Left|Right) (.+)$/.exec(p);
+      return m
+        ? `<span class="keycap split"><span class="sym">${esc(m[2])}</span><span class="word">${esc(m[1].toLowerCase())}</span></span>`
+        : `<span class="keycap">${esc(p)}</span>`;
+    }).join('<span class="plus">+</span>');
+  }
+
+  function keyButton(s) {
+    if (s.capturing) return `<span class="capture-slot" role="status">Press a key<span class="caret"></span></span>`;
+    return `<button class="keys" data-action="capture" title="Change hotkey" aria-label="Hotkey ${esc(s.hotkey.label)}. Change.">${keycaps(s.hotkey.label)}</button>`;
+  }
+
+  const cancelKey = (withText) => `<button class="cancel-key" data-action="cancel"><span class="kbd">esc</span>${withText ? "Cancel" : ""}</button>`;
+  const changeBtn = () => `<button class="change-btn" data-action="capture">${I.pencil}Change</button>`;
+
+  function seg(name, value, options) {
+    const idx = Math.max(0, options.findIndex((o) => o[0] === value));
+    const btns = options.map(([v, text]) =>
+      `<button role="radio" aria-checked="${v === value}" data-action="${name}" data-value="${v}">${esc(text)}</button>`).join("");
+    return `<div class="seg" role="radiogroup" data-index="${idx}"><span class="seg-thumb"></span>${btns}</div>`;
+  }
+
+  // ---------- transient UI (never stored in state) ----------
+  const ui = {
+    copied: null,        // { index, text, until }
+    open: null,          // text of the expanded history row
+    confirmUntil: 0,     // hotkey confirm animation
+    justDone: {},        // step id -> true for the render where it turns done
+    waiting: {},         // permission id -> time when "Open Settings" was clicked
+    justGranted: {},     // permission id -> true for the render where it turns granted
+    holdPermsUntil: 0,   // keep the permission step open briefly so the last check is seen
+    lastView: null,
+  };
+  let state = null;
+  let prev = null;
+
+  // ---------- set-up steps ----------
+  function buildSteps(s) {
+    const mac = s.platform === "mac";
+    const acc = s.account;
+    const steps = [];
+
+    let body1 = "";
+    if (acc === "logged_out") {
+      body1 = `<button class="btn btn-primary btn-wide" data-action="login">Log in with ChatGPT</button>`;
+    } else if (acc === "logging_in") {
+      body1 = `<div class="working"><span class="spinner"></span>Finish logging in in the ChatGPT window</div>`;
+    } else if (acc === "learning") {
+      body1 = `<div class="working"><span class="spinner"></span>Getting ready…</div><div class="progress"><i></i></div>`;
+    } else if (acc === "error") {
+      body1 = `<p class="error-text">${I.warn}<span>${esc(s.account_error || "Could not log in.")}</span></p><button class="btn btn-primary" data-action="login">Try again</button>`;
+    }
+    steps.push({ id: "login", done: acc === "ready", title: "Log in", doneTitle: "Connected",
+      meta: acc === "ready" ? `<button class="link" data-action="logout">Log out</button>` : "", body: body1 });
+
+    if (mac) {
+      const perms = s.permissions || {};
+      const missing = PERMS.filter((p) => perms[p.id] === "missing").length;
+      const rows = PERMS.map((p) => {
+        const st = perms[p.id] || "unknown";
+        let action;
+        if (st === "granted") action = `<span class="perm-ok${ui.justGranted[p.id] ? " pop" : ""}" aria-label="On">${I.checkBig}</span>`;
+        else if (ui.waiting[p.id]) action = `<span class="perm-wait"><span class="spinner"></span>Waiting…</span>`;
+        else action = `<button class="btn btn-quiet" data-action="perm" data-value="${p.id}">Open Settings</button>`;
+        const dot = `<span class="dot ${st}${ui.justGranted[p.id] ? " pop" : ""}"></span>`;
+        return `<div class="perm" title="${esc(p.why)}">${dot}<span class="perm-text"><span class="perm-name">${p.name}</span><span class="perm-sub">${p.sub}</span></span>${action}</div>`;
+      }).join("");
+      steps.push({ id: "perms", done: permsOk(s), title: "Allow access", doneTitle: "Access on",
+        meta: permsOk(s) ? "" : `${missing} to go`, body: `<div class="perms">${rows}</div>` });
+    }
+
+    const verb = s.mode === "toggle" ? "Press" : "Hold";
+    steps.push({ id: "try", done: (s.history || []).length > 0, title: "Try it", meta: "",
+      body: `<div class="try">${verb} ${keyButton(s)} and speak</div>${s.capturing ? `<div style="margin-top:var(--s2)">${cancelKey(true)}</div>` : ""}` });
+
+    // The open step is the first one not done. While the last permission
+    // turns green, the permission step stays open a moment longer.
+    let active = steps.findIndex((st) => !st.done);
+    const permIdx = steps.findIndex((st) => st.id === "perms");
+    if (permIdx >= 0 && Date.now() < ui.holdPermsUntil && (active < 0 || active > permIdx)) active = permIdx;
+    // Steps after the open step never show as done: the list reads in order.
+    steps.forEach((st, i) => { st.shownDone = st.done && (active < 0 || i <= active); });
+    return { steps, active };
+  }
+
+  function stepsView(s) {
+    const { steps, active } = buildSteps(s);
+    const items = steps.map((st, i) => {
+      const cls = ["step", st.shownDone ? "done" : "", i === active ? "active" : "", ui.justDone[st.id] ? "just" : ""].join(" ");
+      const num = st.shownDone ? I.check : String(i + 1);
+      return `<li class="${cls}">
+        <div class="step-head"><span class="step-num">${num}</span><span class="step-title">${st.shownDone && st.doneTitle ? st.doneTitle : st.title}</span>${st.meta && (i <= active || active < 0) ? `<span class="step-meta">${st.meta}</span>` : ""}</div>
+        ${i === active ? `<div class="step-body">${st.body}</div>` : ""}
+      </li>`;
+    }).join("");
+    return `<h1 class="setup-title">Set up vox</h1><ol class="steps">${items}</ol>`;
+  }
+
+  // ---------- home ----------
+  function accountRow() {
+    return `<div class="account"><span class="check-badge">${I.check}</span><span class="label">Connected</span><button class="link" data-action="logout">Log out</button></div>`;
+  }
+
+  function settingsView(s) {
+    const confirmed = Date.now() < ui.confirmUntil ? " confirmed" : "";
+    const warning = s.hotkey && s.hotkey.warning
+      ? `<div class="key-warning" role="note">${I.warn}<span>${esc(s.hotkey.warning)}</span></div>` : "";
+    return `<div class="settings">
+      <div class="hotkey${confirmed}">
+        <div class="hotkey-text"><div class="hotkey-title">Hotkey</div></div>
+        ${s.capturing ? cancelKey(true) : changeBtn()}
+        ${keyButton(s)}
+      </div>
+      ${warning}
+      ${seg("mode", s.mode, [["hold", "Hold to talk"], ["toggle", "Press to toggle"]])}
+      ${seg("output", s.output, [["paste", "Paste into app"], ["copy", "Copy only"]])}
+    </div>`;
+  }
+
+  function recentView(s) {
+    const now = Date.now();
+    // The warning line takes one row of height; drop one row so the footer
+    // stays inside the fixed 520 px window.
+    const max = s.hotkey && s.hotkey.warning ? 4 : 5;
+    const rows = (s.history || []).slice(0, max).map((h, i) => {
+      const copied = ui.copied && ui.copied.index === i && ui.copied.text === h.text && now < ui.copied.until;
+      const open = ui.open === h.text;
+      return `<li class="row${copied ? " copied" : ""}${open ? " open" : ""}" data-action="expand" data-index="${i}" aria-expanded="${open}">
+        <span class="row-time">${esc(h.time)}</span>
+        <span class="row-text">${esc(h.text)}</span>
+        <button class="copy-btn" data-action="copy" data-index="${i}" aria-label="Copy">${copied ? I.check + "<span>Copied</span>" : I.copy}</button>
+      </li>`;
+    }).join("");
+    return `<div class="recent"><h2 class="section-title">Recent</h2><ul class="rows">${rows}</ul></div>`;
+  }
+
+  function footerView(s, home) {
+    const sw = home
+      ? `<button class="switch" role="switch" aria-checked="${!!s.sounds}" data-action="sounds">Sounds<span class="track"></span></button>` : "";
+    return `<span>vox ${esc(s.version || "")}</span>${sw}`;
+  }
+
+  // ---------- render ----------
+  const last = {};
+  function put(id, html, enterClass) {
+    const el = document.getElementById(id);
+    if (last[id] === html) return;
+    last[id] = html;
+    el.innerHTML = html;
+    el.hidden = html === "";
+    if (enterClass) { el.classList.remove(enterClass); void el.offsetWidth; el.classList.add(enterClass); }
+  }
+
+  function isHome(s) {
+    return s.account === "ready" && permsOk(s) && (s.history || []).length > 0 && Date.now() >= ui.holdPermsUntil;
+  }
+
+  function render() {
+    const s = state;
+    if (!s) return;
+    const view = isHome(s) ? "home" : "setup";
+    const enter = ui.lastView !== null && ui.lastView !== view ? "view-enter" : null;
+    ui.lastView = view;
+    if (view === "setup") {
+      put("top", stepsView(s), enter);
+      put("settings", "");
+      put("recent", "");
+    } else {
+      put("top", accountRow(), enter);
+      put("settings", settingsView(s), enter);
+      put("recent", recentView(s), enter);
+    }
+    put("footer", footerView(s, view === "home"));
+  }
+
+  function onState(s) {
+    prev = state;
+    state = s;
+    ui.justDone = {};
+    ui.justGranted = {};
+    if (prev) {
+      // Hotkey confirm: capture ended with a new key.
+      if (prev.capturing && !s.capturing && prev.hotkey.label !== s.hotkey.label) {
+        ui.confirmUntil = Date.now() + 700;
+        setTimeout(render, 720);
+      }
+      // Permissions: a change ends "Waiting…"; a new grant pops its check.
+      const pp = prev.permissions || {}, np = s.permissions || {};
+      PERMS.forEach((p) => {
+        if (pp[p.id] !== np[p.id]) delete ui.waiting[p.id];
+        if (pp[p.id] !== "granted" && np[p.id] === "granted") ui.justGranted[p.id] = true;
+      });
+      if (!permsOk(prev) && permsOk(s) && s.platform === "mac") {
+        ui.holdPermsUntil = Date.now() + 900;
+        setTimeout(render, 920);
+      }
+      // Steps that just turned done get one pop.
+      const was = buildSteps(prev).steps;
+      buildSteps(s).steps.forEach((st) => {
+        const p = was.find((x) => x.id === st.id);
+        if (st.done && p && !p.done) ui.justDone[st.id] = true;
+      });
+    }
+    render();
+  }
+
+  // ---------- bridge ----------
+  let api = null; // set to the pywebview api or the mock
+  const call = (name, ...args) => {
+    if (!api || typeof api[name] !== "function") return Promise.resolve();
+    return Promise.resolve(api[name](...args)).catch((e) => console.error("[vox]", name, e));
+  };
+
+  window.vox = window.vox || {};
+  window.vox.emit = (msg) => { if (msg && msg.type === "state" && msg.state) onState(msg.state); };
+
+  // ---------- interactions ----------
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-action]");
+    if (!t || !state) return;
+    const a = t.dataset.action, v = t.dataset.value;
+    if (a === "login") call("login");
+    else if (a === "logout") call("logout");
+    else if (a === "capture") call("capture_hotkey");
+    else if (a === "cancel") call("cancel_capture");
+    else if (a === "mode" && v !== state.mode) call("set_mode", v);
+    else if (a === "output" && v !== state.output) call("set_output", v);
+    else if (a === "sounds") call("set_sounds", !state.sounds);
+    else if (a === "perm") {
+      ui.waiting[v] = Date.now();
+      // Stop waiting after 30 s even if the user closed Settings unchanged.
+      setTimeout(() => { if (ui.waiting[v] && Date.now() - ui.waiting[v] >= 30000) { delete ui.waiting[v]; render(); } }, 30010);
+      render();
+      call("open_permission", v);
+    } else if (a === "copy") {
+      const i = Number(t.dataset.index);
+      const h = (state.history || [])[i];
+      if (!h) return;
+      call("copy", h.text);
+      ui.copied = { index: i, text: h.text, until: Date.now() + 1400 };
+      render();
+      setTimeout(render, 1420);
+    } else if (a === "expand") {
+      // Do not collapse a row while the user selects text in it.
+      if (String(window.getSelection && window.getSelection()).length > 0) return;
+      const h = (state.history || [])[Number(t.dataset.index)];
+      if (!h) return;
+      ui.open = ui.open === h.text ? null : h.text;
+      render();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (state && state.capturing && e.key === "Escape") { e.preventDefault(); call("cancel_capture"); }
+  });
+
+  // ---------- mock (plain browser, or "?mock") ----------
+  function startMock() {
+    const history = [
+      { text: "Let's move the review to Thursday afternoon, if that works for everyone. I will send the agenda tomorrow morning.", time: "14:02" },
+      { text: "Remind me to send the invoice to Marta before Friday.", time: "13:47" },
+      { text: "The build passes locally but fails on the Windows runner.", time: "11:20" },
+    ];
+    const five = history.concat([
+      // CJK sample, escaped so the source stays ASCII: checks Chinese layout in Recent.
+      { text: "\u5468\u4e94\u4e4b\u524d\u628a\u53d1\u7968\u53d1\u7ed9\u739b\u5c14\u5854\uff0c\u987a\u4fbf\u786e\u8ba4\u4e00\u4e0b\u4ed8\u6b3e\u65e5\u671f\u3002", time: "10:05" },
+      { text: "Ship it after the review.", time: "09:31" },
+    ]);
+    const granted = { microphone: "granted", accessibility: "granted", input_monitoring: "granted" };
+    const base = {
+      platform: "mac", account: "ready", account_error: null, hotkey: { label: "Right ⌥", warning: null },
+      capturing: false, mode: "hold", output: "paste", sounds: true, permissions: granted, history, version: "0.2.0",
+    };
+    const presets = {
+      logged_out: { account: "logged_out", history: [] },
+      first_run: { account: "logged_out", history: [], permissions: { microphone: "missing", accessibility: "missing", input_monitoring: "missing" } },
+      logging_in: { account: "logging_in", history: [] },
+      learning: { account: "learning", history: [] },
+      ready: {},
+      ready_full: { history: five },
+      ready_empty: { history: [] },
+      capturing: { capturing: true },
+      permissions: { permissions: { microphone: "missing", accessibility: "missing", input_monitoring: "granted" } },
+      error: { account: "error", account_error: "Login timed out.", history: [] },
+      warning: { history: five, hotkey: { label: "Ctrl + Space", warning: "Also switches input source" } },
+      win: { platform: "win", hotkey: { label: "Right Ctrl", warning: null }, permissions: {} },
+    };
+    let s;
+    const load = () => {
+      const key = (location.hash || "#ready").slice(1);
+      s = JSON.parse(JSON.stringify(Object.assign({}, base, presets[key] || {})));
+      state = null; ui.lastView = null; ui.waiting = {}; ui.open = null;
+      window.vox.emit({ type: "state", state: s });
+    };
+    const push = (patch) => { s = Object.assign({}, s, patch); window.vox.emit({ type: "state", state: JSON.parse(JSON.stringify(s)) }); };
+    const after = (ms, fn) => setTimeout(fn, ms);
+
+    // Mock key capture. A lone modifier is decided on key-up, so that
+    // "Ctrl" then "Space" becomes "Ctrl + Space" and not "Left Ctrl".
+    const mac = () => s.platform === "mac";
+    const MOD = { Control: () => (mac() ? "⌃" : "Ctrl"), Alt: () => (mac() ? "⌥" : "Alt"), Shift: () => (mac() ? "⇧" : "Shift"), Meta: () => (mac() ? "⌘" : "Win") };
+    let pendingMod = null;
+    const keyName = (e) => {
+      if (e.code === "Space") return "Space";
+      if (/^F\d+$/.test(e.code)) return e.code;
+      if (e.key.length === 1) return e.key.toUpperCase();
+      return e.key;
+    };
+    const setKey = (label) => push({ capturing: false, hotkey: { label, warning: label === "Ctrl + Space" ? "Also switches input source" : null } });
+    document.addEventListener("keydown", (e) => {
+      if (!s || !s.capturing || e.key === "Escape") return;
+      e.preventDefault();
+      if (MOD[e.key]) { pendingMod = e; return; }
+      pendingMod = null;
+      const mods = [];
+      if (e.ctrlKey) mods.push(MOD.Control());
+      if (e.altKey) mods.push(MOD.Alt());
+      if (e.shiftKey) mods.push(MOD.Shift());
+      if (e.metaKey) mods.push(MOD.Meta());
+      setKey(mods.concat(keyName(e)).join(" + "));
+    });
+    document.addEventListener("keyup", (e) => {
+      if (!s || !s.capturing || !pendingMod || e.code !== pendingMod.code) return;
+      const side = e.code.endsWith("Right") ? "Right" : "Left";
+      pendingMod = null;
+      setKey(`${side} ${MOD[e.key]()}`);
+    });
+
+    api = {
+      get_state: () => Promise.resolve(s),
+      login: () => {
+        push({ account: "logging_in", account_error: null });
+        after(1600, () => { push({ account: "learning" }); after(5000, () => push({ account: "ready" })); });
+      },
+      logout: () => push({ account: "logged_out" }),
+      capture_hotkey: () => push({ capturing: true }),
+      cancel_capture: () => push({ capturing: false }),
+      set_mode: (m) => push({ mode: m }),
+      set_output: (o) => push({ output: o }),
+      set_sounds: (on) => push({ sounds: !!on }),
+      open_permission: (id) => after(1500, () => push({ permissions: Object.assign({}, s.permissions, { [id]: "granted" }) })),
+      copy: (text) => { try { navigator.clipboard && navigator.clipboard.writeText(text); } catch (_) {} },
+    };
+    window.addEventListener("hashchange", load);
+    load();
+  }
+
+  // ---------- boot ----------
+  let booted = false;
+  function bootReal() {
+    if (booted) return;
+    booted = true;
+    api = window.pywebview.api;
+    call("get_state").then((s) => { if (s && !state) onState(s); });
+  }
+  // "?mock" forces the mock, also inside pywebview, for screenshots of
+  // each state in the real engine.
+  if (new URLSearchParams(location.search).has("mock")) {
+    booted = true;
+    startMock();
+  }
+  window.addEventListener("pywebviewready", bootReal);
+  if (window.pywebview && window.pywebview.api) bootReal();
+  setTimeout(() => {
+    if (booted) return;
+    if (window.pywebview) return; // bridge exists; wait for pywebviewready.
+    booted = true;
+    startMock();
+  }, 300);
+})();
+</script>
+</body>
+</html>

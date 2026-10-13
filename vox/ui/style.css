@@ -1,0 +1,640 @@
+/* vox shared styles.
+ *
+ * Tokens follow docs/design.md. Light is the default; dark comes from
+ * prefers-color-scheme so the window follows the OS without a setting.
+ * The HUD does not use the theme colours: its capsule is dark in both
+ * modes, so its own tokens live in hud.html.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Neutrals */
+  --bg: #ffffff;
+  --surface: #f6f6f7;
+  --surface-2: #ececee;
+  --line: #e4e4e7;
+  --text: #18181b;
+  --text-2: #5f6168;
+  --text-3: #9a9ca3;
+
+  /* Ink: the primary action colour. It matches the dark HUD capsule, so the
+     two surfaces read as one product. */
+  --ink: #1b1b1f;
+  --ink-text: #ffffff;
+  --ink-hover: #34343a;
+
+  /* The one accent: "on" and "done" (checks, granted, live state). */
+  --accent: #12a150;
+  --accent-soft: rgba(18, 161, 80, 0.12);
+
+  /* Status colours. Not accents: they only mark problems. */
+  --danger: #d0362c;
+  --warn: #c27a00;
+
+  --thumb: #ffffff;
+  --thumb-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --key-top: #ffffff;
+  --key-side: #d9d9de;
+  --focus: 0 0 0 3px rgba(18, 161, 80, 0.35);
+
+  /* Type */
+  /* CJK faces come after the UI faces so Latin text keeps the system look
+     and Chinese text gets PingFang or YaHei, not a fallback serif. */
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 20px;
+
+  /* Spacing (4 px grid) */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+
+  /* Radius */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 12px;
+
+  /* Motion */
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e21;
+    --surface: #26262a;
+    --surface-2: #303035;
+    --line: #36363c;
+    --text: #ededf0;
+    --text-2: #a6a8b0;
+    --text-3: #8a8c94;
+
+    --ink: #f2f2f4;
+    --ink-text: #18181b;
+    --ink-hover: #ffffff;
+
+    --accent: #34d17a;
+    --accent-soft: rgba(52, 209, 122, 0.14);
+
+    --danger: #ff6b60;
+    --warn: #f2ac3c;
+
+    --thumb: #55555c;
+    --thumb-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    --key-top: #3a3a40;
+    --key-side: #141416;
+    --focus: 0 0 0 3px rgba(52, 209, 122, 0.4);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+svg { display: block; flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Main window                                                         */
+/* ------------------------------------------------------------------ */
+
+body.main {
+  background: var(--bg);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--s5) var(--s5) 0;
+  overflow-y: auto;
+}
+
+.app > * { flex: none; }
+.app [hidden] { display: none !important; }
+
+/* Account row (set-up view) */
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 28px;
+  margin-bottom: var(--s5);
+}
+.account .label { flex: 1; font-weight: 500; }
+.check-badge {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.link {
+  margin-right: -4px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+}
+.link:hover { color: var(--text); text-decoration: underline; }
+
+/* Steps (first run) */
+.setup-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  margin: 0 0 var(--s3);
+}
+
+.steps {
+  list-style: none;
+  margin: 0 0 var(--s5);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.step {
+  border-radius: var(--r-lg);
+  transition: background var(--t-base) var(--ease);
+}
+.step.active { background: var(--surface); }
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  height: 40px;
+  padding: 0 var(--s3);
+}
+
+.step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-3);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.step.active .step-num {
+  color: var(--ink-text);
+  background: var(--ink);
+  box-shadow: none;
+}
+.step.done .step-num {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: none;
+  animation: pop var(--t-slow) var(--ease-out);
+}
+
+.step-title { flex: 1; font-weight: 500; }
+.step:not(.active):not(.done) .step-title { color: var(--text-3); }
+.step.done .step-title { color: var(--text-2); }
+.step-meta { font-size: var(--fs-sm); color: var(--text-3); }
+
+.step-body {
+  padding: 0 var(--s3) var(--s3) calc(var(--s3) + 20px + var(--s3));
+  animation: reveal var(--t-base) var(--ease-out);
+}
+.step-body p { margin: 0 0 var(--s3); color: var(--text-2); }
+.step-body p:last-child { margin-bottom: 0; }
+
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pop {
+  0% { transform: scale(0.6); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  height: 34px;
+  padding: 0 var(--s4);
+  border-radius: var(--r-md);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--ink); color: var(--ink-text); }
+.btn-primary:hover { background: var(--ink-hover); }
+.btn-wide { width: 100%; }
+.btn-quiet {
+  height: 26px;
+  padding: 0 var(--s3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  border-radius: var(--r-sm);
+}
+.btn-quiet:hover { box-shadow: inset 0 0 0 1px var(--text-3); }
+
+/* Two classes, so it wins over ".step-body p" and stays red. */
+.step-body .error-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--danger);
+}
+
+/* Working row: spinner + text */
+.working {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--text-2);
+}
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--text-2);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* "Getting ready" progress. It fills over about 5 s and then waits at 92 %,
+   so a slow first learn never looks finished before it is. */
+.progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+  margin-top: var(--s3);
+}
+.progress > i {
+  display: block;
+  height: 100%;
+  width: 92%;
+  border-radius: inherit;
+  background: var(--ink);
+  transform-origin: left;
+  animation: fill 5s var(--ease-out) both;
+}
+@keyframes fill { from { transform: scaleX(0.04); } to { transform: scaleX(1); } }
+
+/* Permission rows */
+.perms { display: flex; flex-direction: column; gap: var(--s2); }
+.perm {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 36px;
+}
+.perm-text { flex: 1; min-width: 0; }
+.perm-name { font-weight: 500; }
+.perm-sub { display: block; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.3; }
+.perm-ok { color: var(--accent); display: grid; place-items: center; width: 26px; height: 26px; }
+.perm-ok.pop, .dot.pop { animation: pop var(--t-slow) var(--ease-out); }
+.perm-wait { display: inline-flex; align-items: center; gap: 6px; height: 26px; font-size: var(--fs-sm); color: var(--text-3); }
+.perm-wait .spinner { width: 12px; height: 12px; border-width: 1.5px; }
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-3);
+}
+.dot.granted { background: var(--accent); }
+.dot.missing { background: var(--danger); }
+.dot.unknown { background: var(--warn); }
+
+/* Settings block */
+.settings { display: flex; flex-direction: column; gap: var(--s2); }
+
+.hotkey {
+  min-height: 68px; /* Same height idle and capturing: no jump. */
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s3) var(--s3) var(--s4);
+  margin-bottom: var(--s1);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  transition: box-shadow var(--t-base) var(--ease);
+}
+.hotkey-text { flex: 1; min-width: 0; }
+.hotkey-title { font-weight: 500; }
+.change-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.change-btn:hover { color: var(--text); background: var(--surface-2); }
+.key-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 var(--s1) var(--s4);
+  font-size: var(--fs-sm);
+  color: var(--warn);
+}
+.hotkey.confirmed { animation: ring 700ms var(--ease-out); }
+@keyframes ring {
+  0% { box-shadow: 0 0 0 0 var(--accent); }
+  100% { box-shadow: 0 0 0 8px transparent; }
+}
+
+/* Keycaps: a lighter top face over a darker lip, like a real key.
+   Pressing moves the face down onto the lip. */
+.keys {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px;
+  border-radius: var(--r-md);
+}
+.keys .plus { color: var(--text-3); font-size: var(--fs-sm); }
+.keycap {
+  position: relative;
+  min-width: 44px;
+  height: 40px;
+  padding: 0 var(--s3);
+  border-radius: 8px;
+  background: var(--key-top);
+  box-shadow: 0 3px 0 var(--key-side), 0 0 0 1px var(--line), 0 4px 6px rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--text);
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.keycap.split {
+  min-width: 64px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 4px 8px 4px;
+}
+.keycap .sym { align-self: flex-end; font-size: 16px; line-height: 1; }
+.keycap .word { align-self: flex-start; font-size: 11px; line-height: 1; color: var(--text-2); }
+
+button.keys:hover .keycap { box-shadow: 0 3px 0 var(--key-side), 0 0 0 1px var(--text-3), 0 4px 6px rgba(0, 0, 0, 0.06); }
+button.keys:active .keycap,
+.hotkey.confirmed .keycap { transform: translateY(2px); box-shadow: 0 1px 0 var(--key-side), 0 0 0 1px var(--line); }
+.hotkey.confirmed .keycap { animation: press 420ms var(--ease-out); }
+@keyframes press {
+  0% { transform: translateY(2px); box-shadow: 0 1px 0 var(--key-side), 0 0 0 1px var(--accent); }
+  100% { transform: none; box-shadow: 0 3px 0 var(--key-side), 0 0 0 1px var(--line); }
+}
+
+/* Capturing: the key turns into an empty slot that waits for input. */
+.capture-slot {
+  height: 40px;
+  min-width: 132px;
+  padding: 0 var(--s3);
+  border-radius: 8px;
+  border: 1.5px dashed var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-weight: 500;
+  animation: breathe 1.6s var(--ease) infinite;
+}
+.caret {
+  width: 1.5px;
+  height: 16px;
+  background: var(--text);
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink { to { visibility: hidden; } }
+@keyframes breathe { 50% { border-color: var(--text-2); } }
+
+/* Inline keycap inside running text */
+.kbd {
+  display: inline-block;
+  padding: 0 6px;
+  margin: 0 1px;
+  border-radius: 5px;
+  background: var(--key-top);
+  box-shadow: 0 1.5px 0 var(--key-side), 0 0 0 1px var(--line);
+  font-weight: 500;
+  color: var(--text);
+  line-height: 20px;
+}
+
+/* Segmented control: a sliding thumb shows the choice. */
+.seg {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 32px;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.seg-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  border-radius: 7px;
+  background: var(--thumb);
+  box-shadow: var(--thumb-shadow);
+  transition: transform var(--t-base) var(--ease-out);
+}
+.seg[data-index="1"] .seg-thumb { transform: translateX(100%); }
+.seg button {
+  position: relative;
+  z-index: 1;
+  border-radius: 7px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+  transition: color var(--t-fast) var(--ease);
+}
+.seg button[aria-checked="true"] { color: var(--text); }
+
+/* Recent transcripts */
+.recent { margin-top: var(--s5); }
+.section-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+  margin: 0 0 var(--s1) 0;
+  padding-left: var(--s1);
+}
+.rows { list-style: none; margin: 0; padding: 0; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  height: 36px;
+  padding: 0 var(--s1) 0 var(--s1);
+  border-radius: var(--r-md);
+  transition: background var(--t-slow) var(--ease);
+}
+/* Divider as an inset line, so it stays straight next to the row radius. */
+.row { position: relative; cursor: pointer; }
+.row + .row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 4px;
+  right: 4px;
+  height: 1px;
+  background: var(--line);
+  transition: opacity var(--t-fast) var(--ease);
+}
+.row:hover, .row.open { background: var(--surface); }
+.row:hover::before, .row:hover + .row::before,
+.row.open::before, .row.open + .row::before,
+.row.copied::before, .row.copied + .row::before { opacity: 0; }
+.row.open { height: auto; min-height: 36px; align-items: flex-start; padding-top: 8px; padding-bottom: 8px; }
+.row.open .row-text { white-space: normal; overflow: visible; -webkit-user-select: text; user-select: text; cursor: text; }
+.row.open .copy-btn { margin-top: -4px; }
+.row.copied { background: var(--accent-soft); }
+.row-time {
+  width: 38px;
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.row-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 6px;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+.copy-btn:hover { color: var(--text); background: var(--surface-2); }
+.row.copied .copy-btn { color: var(--accent); background: none; }
+.row.copied .copy-btn span { animation: reveal var(--t-fast) var(--ease-out); }
+
+
+/* Footer */
+.footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+/* Sounds switch: compact, in the footer. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 2px 0 4px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.switch:hover { color: var(--text); }
+.switch .track {
+  position: relative;
+  width: 26px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: background var(--t-base) var(--ease);
+}
+.switch .track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform var(--t-base) var(--ease-out);
+}
+.switch[aria-checked="true"] .track { background: var(--accent); box-shadow: none; }
+.switch[aria-checked="true"] .track::after { transform: translateX(10px); }

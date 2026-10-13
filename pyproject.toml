@@ -1,0 +1,28 @@
+[project]
+name = "vox"
+version = "0.2.0"
+description = "Push-to-talk dictation for macOS and Windows, powered by your ChatGPT account."
+requires-python = ">=3.12"
+dependencies = [
+    "sounddevice>=0.5",
+    "numpy>=1.26",
+    "pynput>=1.7.7",
+    "pyperclip>=1.9",
+    "pywebview>=5",
+    "pyobjc-framework-avfoundation>=10 ; sys_platform == 'darwin'",
+    "pystray>=0.19 ; sys_platform == 'win32'",
+    "pillow>=10 ; sys_platform == 'win32'",
+]
+
+[project.scripts]
+vox = "vox.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pillow>=10",
+    "pyinstaller>=6.10",
+]
