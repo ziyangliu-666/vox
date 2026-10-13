@@ -79,7 +79,9 @@
      grows stays against its edge. Moves run on a spring curve. */
   .anchor { display: contents; }
   .stage.free { display: block; padding: 0; }
-  .stage.free .anchor { display: block; position: absolute; left: 50%; bottom: 4px; }
+  /* Only left/top place the anchor: with top and bottom both set, its
+     height would be 0, and translate(-50%, -100%) would not lift the pill. */
+  .stage.free .anchor { display: block; position: absolute; }
   .anchor[data-edge="bottom"] { transform: translate(-50%, -100%); }
   .anchor[data-edge="top"] { transform: translate(-50%, 0); }
   .anchor[data-edge="left"] { transform: translate(0, -50%); }
