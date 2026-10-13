@@ -65,9 +65,9 @@ def caret(d: ImageDraw.ImageDraw, box, colour, waves: int = 2, wave_alpha=(255, 
 def app_icon(size: int = 1024) -> Image.Image:
     """Draw the app icon at one exact pixel size.
 
-    Below 128 px the full mark turns to mush, so small sizes use a bolder
-    beam alone and less padding, the way system icons do: at 64 px and
-    below a wave is only a dot.
+    Small sizes (64 px and below: the Windows taskbar, Explorer, title
+    bars) keep the whole mark, so they match the large icon, with bolder
+    strokes and less padding so the waves stay two clear arcs.
     """
     small = size <= 64
     k = 8 if small else 4  # Draw large and shrink, for smooth edges.
@@ -79,10 +79,8 @@ def app_icon(size: int = 1024) -> Image.Image:
                                           fill=TILE, outline=EDGE, width=max(k, round(s / 512)))
     pad = (s - 2 * inset) * (0.10 if small else 0.14)
     box = (inset + pad, inset + pad, s - inset - pad, s - inset - pad)
-    if small:
-        caret(ImageDraw.Draw(img), box, WHITE, waves=0, weight=1.8)
-    else:
-        caret(ImageDraw.Draw(img), box, WHITE, wave_alpha=(255,), beam=APP_BEAM)
+    caret(ImageDraw.Draw(img), box, WHITE, wave_alpha=(255,), beam=APP_BEAM,
+          weight=1.35 if small else 1.0)
     return img.resize((size, size), Image.LANCZOS)
 
 
