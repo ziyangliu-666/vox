@@ -27,9 +27,20 @@ else
   echo "warning: no Assets.car (needs Xcode 26); macOS 26 will show the icon on a grey plate" >&2
 fi
 
-# Ad-hoc signature. macOS ties privacy permissions to the signature, and an
-# unsigned bundle loses them on each rebuild.
-codesign --force --deep --sign - dist/vox.app
+# macOS ties privacy permissions (microphone, Accessibility, Input
+# Monitoring) to the code signature. An ad-hoc signature changes with each
+# build, so every update asked for them again. Signed with the same
+# certificate, each build has the same designated requirement and keeps
+# them. VOX_SIGN_IDENTITY is that certificate's SHA-1 in a keychain on the
+# search list; release builds set VOX_REQUIRE_SIGN=1 so they cannot fall
+# back to ad hoc. Local builds without it are signed ad hoc.
+identity="${VOX_SIGN_IDENTITY:--}"
+if [ "$identity" = "-" ] && [ "${VOX_REQUIRE_SIGN:-0}" = 1 ]; then
+  echo "no signing identity (VOX_SIGN_IDENTITY)" >&2
+  exit 1
+fi
+codesign --force --deep --sign "$identity" dist/vox.app
+codesign -dr - dist/vox.app 2>&1 | tail -1
 
 # The disk image holds the app and a link to /Applications, so the window
 # shows where to drag it.

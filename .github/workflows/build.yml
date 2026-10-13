@@ -26,9 +26,28 @@ jobs:
           xc=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
           sudo xcode-select -s "$xc"
           xcodebuild -version
+      # The self-signed "vox Code Signing" certificate, so every release has
+      # the same designated requirement and macOS keeps its permissions.
+      - name: Import the signing certificate
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          kc="$RUNNER_TEMP/vox.keychain-db"
+          security create-keychain -p ci "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p ci "$kc"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/vox.p12"
+          security import "$RUNNER_TEMP/vox.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/vox.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          id=$(security find-identity -p codesigning "$kc" | awk '/"vox Code Signing"/ {print $2; exit}')
+          echo "VOX_SIGN_IDENTITY=$id" >> "$GITHUB_ENV"
       - run: packaging/build_mac.sh
         env:
           VOX_REQUIRE_ICON: "1"
+          VOX_REQUIRE_SIGN: "1"
       - name: Put the version in the file name
         run: |
           v=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)

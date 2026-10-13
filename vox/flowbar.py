@@ -39,6 +39,8 @@ class WebKitHost(objc.Category(BrowserView.WebKitHost)):
         return True
 
 
+# The Dock's full-screen backdrop; the wallpaper sits two levels lower.
+BACKDROP_LEVEL = -2147483622
 GRAB = 28  # Minimum hit size, so the thin idle pill is easy to grab.
 
 
@@ -49,7 +51,7 @@ def usable(screen):
     bar and the Dock, and follows Dock auto-hide. In a full-screen Space
     both are hidden, but visibleFrame still leaves room for them, and the
     bar would float 60 pt above the real edge; there the whole screen is
-    usable. The Dock draws a "Fullscreen Backdrop" window only then.
+    usable. The Dock draws its backdrop window only then.
 
     The Dock strip's own window cannot measure the Dock: on macOS 26 it
     covers the whole screen, and reading it as a strip made the usable
@@ -57,8 +59,11 @@ def usable(screen):
     """
     on_screen = Quartz.CGWindowListCopyWindowInfo(
         Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID) or []
+    # Match the backdrop by its level, not its title: macOS gives window
+    # titles only to apps with Screen Recording access, so vox never saw
+    # "Fullscreen Backdrop" and kept room for a hidden Dock.
     fullscreen = any(w.get("kCGWindowOwnerName") == "Dock"
-                     and w.get("kCGWindowName") == "Fullscreen Backdrop" for w in on_screen)
+                     and w.get("kCGWindowLayer") == BACKDROP_LEVEL for w in on_screen)
     return screen.frame() if fullscreen else screen.visibleFrame()
 
 
