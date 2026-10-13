@@ -90,7 +90,10 @@
   .anchor[data-edge="left"] { transform: translate(0, -50%); }
   .anchor[data-edge="right"] { transform: translate(-100%, -50%); }
   .anchor[data-edge="drag"] { transform: translate(-50%, -50%); }
-  .anchor.fly { transition: left 420ms var(--spring), top 420ms var(--spring), transform 420ms var(--spring); }
+  /* The landing glides like the Windows bar: ease-out cubic, no overshoot.
+     A spring here carried the pill past its edge and back, a visible drift. */
+  .anchor.fly { transition: left 240ms var(--glide), top 240ms var(--glide), transform 240ms var(--glide); }
+  :root { --glide: cubic-bezier(0.33, 1, 0.68, 1); }
   :root { --spring: cubic-bezier(0.34, 1.32, 0.64, 1); --brand: #ff7a59; }
   /* Size eases out without overshoot; only the position springs. A
      springing size wobbles, and the wobble reads as a jump. */
@@ -111,7 +114,7 @@
   .line.on { opacity: 1; }
   .line.h { height: 0; border-top: 2px dashed var(--brand); }
   .line.v { width: 0; border-left: 2px dashed var(--brand); }
-  .ghost { border-radius: 999px; border: 2px dashed rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(0, 0, 0, 0.35); background: rgba(255, 122, 89, 0.18); transition: left 140ms var(--spring), top 140ms var(--spring), width 140ms ease, height 140ms ease; }
+  .ghost { border-radius: 999px; border: 2px dashed rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(0, 0, 0, 0.35); background: rgba(255, 122, 89, 0.18); transition: left 140ms var(--glide), top 140ms var(--glide), width 140ms ease, height 140ms ease; }
 
   .pill.dragging { transform: scale(1.1); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 14px 32px rgba(0, 0, 0, 0.35); opacity: 1; }
   .pill[data-phase="idle"] .content, .pill[data-phase="hidden"] .content { opacity: 0; transition: opacity 60ms ease; }

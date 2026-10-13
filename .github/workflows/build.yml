@@ -14,7 +14,9 @@ on:
 
 jobs:
   macos:
-    runs-on: macos-15
+    # actool compiles the macOS 26 .icon only on a macOS 26 host; on
+    # macos-15 with Xcode 26.3 its asset agent crashes.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
