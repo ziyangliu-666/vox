@@ -15,6 +15,8 @@
     <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-111111?style=flat-square&logo=python&logoColor=white">
   </p>
 
+  <img src="docs/hero.jpg" width="720" alt="ChatGPT's voice input, as a standalone app: vox">
+
   <p><a href="https://github.com/ziyangliu-666/vox/releases/latest"><b>Download</b></a></p>
   <img src="docs/dictate.webp" width="420" alt="The flow bar: listening, then the pasted text">
 </div>
