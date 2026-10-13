@@ -1,6 +1,8 @@
 <div align="center">
-  <img src="docs/icon.png" width="112" alt="vox icon">
-  <h1>vox</h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo-light.png" width="276" alt="vox">
+  </picture>
   <p>Hold a key, speak, and the text appears in any app.<br>
   Dictation for macOS and Windows that runs on your ChatGPT account. No API key.</p>
 
