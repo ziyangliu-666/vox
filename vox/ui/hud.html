@@ -92,7 +92,10 @@
   .anchor[data-edge="drag"] { transform: translate(-50%, -50%); }
   .anchor.fly { transition: left 420ms var(--spring), top 420ms var(--spring), transform 420ms var(--spring); }
   :root { --spring: cubic-bezier(0.34, 1.32, 0.64, 1); --brand: #ff7a59; }
-  .stage.free .pill { transition: width 240ms var(--spring), height 240ms var(--spring), background var(--hud-morph), opacity 120ms ease, transform 160ms var(--spring); }
+  /* Size eases out without overshoot; only the position springs. A
+     springing size wobbles, and the wobble reads as a jump. */
+  .stage.free .pill { transition: width 220ms var(--ease-out-soft), height 220ms var(--ease-out-soft), background var(--hud-morph), opacity 120ms ease, transform 160ms var(--ease-out-soft); }
+  :root { --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1); }
 
   /* Guides: shown only while dragging. Rails on the four edges, a dot on
      each magnet, and for the target: a bright rail, a ring on the magnet,
@@ -286,6 +289,16 @@
     phase = next;
     const cap = maxW();
 
+    // Upright on a side edge, unless the pill has text to show. Set this
+    // before the text is measured: measured in the upright (column) layout,
+    // the width comes out short and the end of the text is cut.
+    const side = ["left", "right"].includes(stage.dataset.dock);
+    const upright = side && ["idle", "hidden", "listening", "transcribing", "cancelled"].includes(next);
+    if (upright !== pill.classList.contains("v")) {
+      barEls.forEach((b) => { b.style.width = ""; b.style.height = ""; });
+    }
+    pill.classList.toggle("v", upright);
+
     if (next === "listening") {
       // Toggle mode shows how to stop and cancel. Hold mode needs no hint:
       // the user's finger is already on the key.
@@ -318,14 +331,6 @@
     pill.classList.toggle("locked", next === "listening" && !!p.locked);
     pill.dataset.phase = next;
     pill.setAttribute("aria-label", { listening: "Listening", transcribing: "Transcribing", done: "Done", cancelled: "Cancelled", error: p.message || "Error" }[next] || "");
-
-    // Upright on a side edge, unless the pill has text to show.
-    const side = ["left", "right"].includes(stage.dataset.dock);
-    const upright = side && ["idle", "hidden", "listening", "transcribing", "cancelled"].includes(next);
-    if (upright !== pill.classList.contains("v")) {
-      barEls.forEach((b) => { b.style.width = ""; b.style.height = ""; });
-    }
-    pill.classList.toggle("v", upright);
 
     // Size the pill to its content so width can animate (auto cannot).
     if (upright) pill.style.width = "";
@@ -432,6 +437,14 @@
     Object.assign(g.style, { left: gx + "px", top: gy + "px", width: w + "px", height: h + "px" });
   }
 
+  // While dragging, the pill already takes the orientation of the edge it
+  // would land on, so the drop is only a move, not a move and a turn.
+  function turnTo(edge) {
+    if (stage.dataset.dock === edge) return;
+    stage.dataset.dock = edge;
+    apply(last);
+  }
+
   // Tell Python where the pill is, for its hover hit test.
   let reportQueued = false;
   function report() {
@@ -466,6 +479,7 @@
     const cx = e.clientX + drag.dx, cy = e.clientY + drag.dy;
     setAnchor(cx, cy, "drag");
     drag.target = targetAt(cx, cy);
+    turnTo(drag.target.edge);
     showGuides(drag.target);
   });
   function endDrag(e) {
@@ -474,7 +488,9 @@
     drag = null;
     try { pill.releasePointerCapture(e.pointerId); } catch (_) {}
     if (!d.moved) { api("clicked"); return; }
-    pill.classList.remove("dragging");
+    // Drop the hover look now, inside the same animation as the landing;
+    // left to Python's pointer poll it would shrink the pill a moment later.
+    pill.classList.remove("dragging", "hover");
     guides.classList.remove("on");
     place = { edge: d.target.edge, t: Math.round(d.target.t * 10000) / 10000 };
     layout(true);
@@ -484,6 +500,7 @@
   pill.addEventListener("pointerup", endDrag);
   pill.addEventListener("pointercancel", endDrag);
 
+  const preview = {};
   let external = false;
   window.hud = {
     set: (p) => { external = true; stopMock(); apply(p || {}); },
@@ -504,10 +521,31 @@
       place = p && p.edge ? p : { edge: "bottom", t: 0.5 };
       if (area) layout(true);
     },
-    // For screenshots: draw the guides as if the pill were dragged to (x, y).
+    // For screenshots and README recordings: act out a drag to (x, y),
+    // then drop() as a release would.
     preview: (x, y) => {
-      buildGuides(); guides.classList.add("on");
-      pill.classList.add("dragging"); setAnchor(x, y, "drag"); showGuides(targetAt(x, y));
+      if (!guides.classList.contains("on")) { buildGuides(); guides.classList.add("on"); }
+      anchor.classList.remove("fly");
+      pill.classList.add("dragging"); setAnchor(x, y, "drag");
+      preview.target = targetAt(x, y); turnTo(preview.target.edge); showGuides(preview.target);
+    },
+    // Act out a drag along points [[x, y], ...] over ms, at the display's
+    // frame rate, then drop. For README recordings.
+    rehearse: (points, ms) => new Promise((done) => {
+      const t0 = performance.now();
+      const step = (now) => {
+        const u = Math.min(1, (now - t0) / ms);
+        const e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+        const f = e * (points.length - 1), i = Math.min(points.length - 2, Math.floor(f)), k = f - i;
+        window.hud.preview(points[i][0] + (points[i + 1][0] - points[i][0]) * k,
+                           points[i][1] + (points[i + 1][1] - points[i][1]) * k);
+        if (u < 1) requestAnimationFrame(step); else done();
+      };
+      requestAnimationFrame(step);
+    }),
+    drop: () => {
+      pill.classList.remove("dragging", "hover"); guides.classList.remove("on");
+      if (preview.target) { place = { edge: preview.target.edge, t: preview.target.t }; layout(true); }
     },
   };
 

@@ -1,66 +1,51 @@
 <div align="center">
-  <img src="docs/icon.png" width="128" alt="vox icon">
+  <img src="docs/icon.png" width="112" alt="vox icon">
   <h1>vox</h1>
-  <p>Hold a key, speak, and your words appear in any app.<br>
-  Push-to-talk dictation for macOS and Windows, powered by your ChatGPT account.</p>
+  <p>Hold a key, speak, and the text appears in any app.<br>
+  Dictation for macOS and Windows that runs on your ChatGPT account. No API key.</p>
   <p><a href="https://github.com/ziyangliu-666/vox/releases/latest"><b>Download</b></a></p>
-  <img src="docs/screenshot.png" width="720" alt="vox main window in light and dark mode, and the flow bar">
+  <img src="docs/dictate.webp" width="420" alt="The flow bar: listening, then the pasted text">
 </div>
 
 ## Features
 
-- **Works everywhere.** Text goes into the app you are typing in: Notes, Slack, WeChat, your editor.
-- **No API key.** vox uses the ChatGPT account you already have.
-- **Any hotkey.** Hold to talk, or press to start and press to stop.
-- **Flow bar.** A small capsule at the bottom of the screen shows when vox is listening and when it is done.
-- **Mixed languages.** Chinese, English and mixed sentences work as well as ChatGPT's own dictation.
+**Hold to talk, double-tap for hands-free.** Hold the hotkey while you speak. Double-tap it to keep listening; press once more to stop.
+
+<img src="docs/handsfree.webp" width="460" alt="Hands-free dictation in the flow bar">
+
+**A flow bar that stays out of the way.** Drag it to any screen edge. Guides show where it lands; it snaps to the middle or the thirds.
+
+<img src="docs/drag.webp" width="560" alt="Dragging the flow bar to the left edge and back">
+
+**Every transcript, searchable.**
+
+<img src="docs/history.png" width="560" alt="History view in light and dark mode">
+
+**Any key you like.** Pick a single key or a combination. Light and dark mode. Chinese, English, and mixed speech.
+
+<img src="docs/window.png" width="560" alt="Main window in light and dark mode">
 
 ## Install
 
-**macOS 12 or later (Apple silicon).** Download `vox.dmg`, open it, and drag vox to Applications.
-vox is not notarized yet, so macOS blocks the first launch. Open System Settings › Privacy & Security and click **Open Anyway**.
+- **macOS 12+, Apple silicon:** open `vox.dmg` and drag vox to Applications. On first launch, allow it in System Settings › Privacy & Security › **Open Anyway**.
+- **Windows 10/11:** run `vox.exe`. If SmartScreen warns, click **More info › Run anyway**.
 
-**Windows 10 or 11.** Download `vox.exe` and run it. If SmartScreen appears, click **More info** › **Run anyway**.
-
-No Python or other setup is needed.
-
-## Usage
-
-1. Click **Log in with ChatGPT** and log in.
-2. On macOS, allow Microphone, Accessibility and Input Monitoring.
-3. Hold **Right ⌥** (macOS) or **Right Ctrl** (Windows), speak, and release.
-
-vox stays in the menu bar or tray. Closing the window does not quit it.
-
-| | |
-|---|---|
-| Change the hotkey | Click **Change**, then press a key or a combination |
-| Cancel while talking | Esc |
-| A clip failed | Menu bar › **Retry last clip** |
-| Copy an old result | Click the copy icon in **Recent** |
+Then click **Log in with ChatGPT**, allow the microphone, and hold **Right ⌥** (Windows: **Right Ctrl**).
 
 ## FAQ
 
-**Is this an official ChatGPT app?**
-No. vox sends audio to the same endpoint that the dictation button on chatgpt.com uses. That endpoint is private: it can change at any time, and automated use is against the ChatGPT terms of use. Use vox at your own risk.
+**Is this an official ChatGPT app?** No. vox uses the private endpoint behind the dictation button on chatgpt.com. It can change without notice, and automated use breaks the ChatGPT terms of use. Use it at your own risk.
 
-**Where does my audio go?**
-Only to ChatGPT, from a chatgpt.com page that vox keeps open in a hidden window. vox does not read or store your login. It keeps your last five transcripts on your computer.
+**Where does my audio go?** To ChatGPT only, from a chatgpt.com page that vox keeps open out of sight. vox never reads your login. Transcripts stay on your computer.
 
-**Why does vox need Accessibility and Input Monitoring?**
-Input Monitoring lets vox see the hotkey while another app is in front. Accessibility lets it paste the text into that app.
+**Why Accessibility and Input Monitoring?** To see the hotkey while you work in another app, and to paste into it.
 
-## Build from source
-
-Requires [uv](https://docs.astral.sh/uv/).
+## Build
 
 ```sh
-uv run vox                       # run the app
-uv run vox --file clip.wav       # transcribe one file and print it
-packaging/build_mac.sh           # dist/vox.app and dist/vox.dmg
-packaging/build_win.ps1          # dist\vox.exe (on Windows)
+uv run vox                  # run from source
+packaging/build_mac.sh      # dist/vox.app, dist/vox.dmg
+packaging/build_win.ps1     # dist\vox.exe
 ```
 
-The UI is plain HTML in `vox/ui`. Open `vox/ui/index.html?mock#ready` in a browser to preview a state; [`docs/design.md`](docs/design.md) lists them all.
-
-A tag like `v0.2.0` builds both platforms on GitHub Actions and publishes a release.
+Pushing a `v*` tag builds both platforms and publishes a release.
