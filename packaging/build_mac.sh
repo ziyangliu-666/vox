@@ -13,12 +13,14 @@ uv run pyinstaller --noconfirm --clean --distpath dist --workpath build packagin
 # macOS 26 puts a plain .icns on a grey plate; from Assets.car it draws the
 # icon on its own plate. Compiling a .icon needs actool from Xcode 26. The
 # release build sets VOX_REQUIRE_ICON=1, so it cannot quietly ship without.
+# actool reports errors on stdout, as a plist; show it when it fails.
 if xcrun actool build/AppIcon.icon --compile dist/vox.app/Contents/Resources \
     --platform macosx --minimum-deployment-target 12.0 --target-device mac \
-    --app-icon AppIcon --output-partial-info-plist build/AppIcon.plist >/dev/null \
+    --app-icon AppIcon --output-partial-info-plist build/AppIcon.plist >build/actool.log 2>&1 \
     && [ -f dist/vox.app/Contents/Resources/Assets.car ]; then
   echo "Compiled Assets.car"
 elif [ "${VOX_REQUIRE_ICON:-0}" = 1 ]; then
+  cat build/actool.log >&2
   echo "actool could not compile build/AppIcon.icon (needs Xcode 26)" >&2
   exit 1
 else
