@@ -148,6 +148,10 @@ class ChatGPTWindow:
 
     def _conceal(self) -> None:
         win = self.window.native
+        # On every Space, and out of Cmd+Tab and Mission Control. A window
+        # that stays on one Space makes macOS switch to that Space each time
+        # vox becomes active, for example when the user grabs the flow bar.
+        win.setCollectionBehavior_((1 << 0) | (1 << 4) | (1 << 6))
         win.setAlphaValue_(0.0)
         win.setIgnoresMouseEvents_(True)
         win.orderFrontRegardless()

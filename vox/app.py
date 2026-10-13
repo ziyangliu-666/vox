@@ -123,6 +123,7 @@ class App:
             "vox", html=_page("index.html"), js_api=Api(self),
             width=400, height=520, resizable=False)
         self.main.events.closing += self._on_main_closing
+        self.main.events.shown += self._main_follows_space
         self.hud = webview.create_window(
             "vox flow bar", html=_page("hud.html"), js_api=HudApi(self),
             width=HUD_W, height=HUD_H,
@@ -423,6 +424,14 @@ class App:
             self.cfg.output = output
             self.cfg.save()
             self.push()
+
+    def _main_follows_space(self) -> None:
+        if IS_MAC:
+            from PyObjCTools import AppHelper
+
+            # When vox becomes active, the main window comes to the user's
+            # Space; without this, macOS switches to the Space it was left on.
+            AppHelper.callAfter(self.main.native.setCollectionBehavior_, 1 << 1)
 
     def show_main(self) -> None:
         self.main.show()
