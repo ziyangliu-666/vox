@@ -418,8 +418,11 @@
     const b = box();
     let html = "";
     const rail = (e, x, y, w, h) => `<i class="rail" data-e="${e}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px"></i>`;
-    html += rail("bottom", b.x + 8, b.y + b.h - 3, b.w - 16, 3) + rail("top", b.x + 8, b.y, b.w - 16, 3);
-    html += rail("left", b.x, b.y + 8, 3, b.h - 16) + rail("right", b.x + b.w - 3, b.y + 8, 3, b.h - 16);
+    // Each rail runs on the line the pill rests on (GAP in from the edge),
+    // so the magnet dots and the landed pill sit on it, not beside it.
+    const r0 = GAP - 1.5;
+    html += rail("bottom", b.x + 8, b.y + b.h - r0 - 3, b.w - 16, 3) + rail("top", b.x + 8, b.y + r0, b.w - 16, 3);
+    html += rail("left", b.x + r0, b.y + 8, 3, b.h - 16) + rail("right", b.x + b.w - r0 - 3, b.y + 8, 3, b.h - 16);
     for (const e of ["bottom", "top", "left", "right"]) {
       for (const m of MAGNETS) {
         const [x, y] = anchorFor({ edge: e, t: m });

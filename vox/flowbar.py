@@ -39,43 +39,27 @@ class WebKitHost(objc.Category(BrowserView.WebKitHost)):
         return True
 
 
-DOCK_LEVEL = 20  # kCGDockWindowLevel: the Dock strip itself.
 GRAB = 28  # Minimum hit size, so the thin idle pill is easy to grab.
 
 
 def usable(screen):
     """The part of the screen the bar may touch, as it is right now.
 
-    NSScreen.visibleFrame always leaves room for the Dock and the menu bar,
-    also when a full-screen app hides them; the bar then floats 60 pt above
-    the real screen edge. So look at what is on screen: the Dock strip
-    window, and the menu bar unless a full-screen Space is active.
+    In a normal Space that is NSScreen.visibleFrame: it leaves out the menu
+    bar and the Dock, and follows Dock auto-hide. In a full-screen Space
+    both are hidden, but visibleFrame still leaves room for them, and the
+    bar would float 60 pt above the real edge; there the whole screen is
+    usable. The Dock draws a "Fullscreen Backdrop" window only then.
+
+    The Dock strip's own window cannot measure the Dock: on macOS 26 it
+    covers the whole screen, and reading it as a strip made the usable
+    area collapse and the bar jump.
     """
-    f, vf = screen.frame(), screen.visibleFrame()
-    x0, y0 = f.origin.x, f.origin.y
-    x1, y1 = x0 + f.size.width, y0 + f.size.height
     on_screen = Quartz.CGWindowListCopyWindowInfo(
         Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID) or []
-    dock = [w for w in on_screen if w.get("kCGWindowOwnerName") == "Dock"]
-    fullscreen = any(w.get("kCGWindowName") == "Fullscreen Backdrop" for w in dock)
-    if not fullscreen:
-        y1 = vf.origin.y + vf.size.height  # Below the menu bar.
-    primary_h = AppKit.NSScreen.screens()[0].frame().size.height
-    for w in dock:
-        if w.get("kCGWindowLayer") != DOCK_LEVEL:
-            continue
-        b = w["kCGWindowBounds"]
-        bx, bw, bh = b["X"], b["Width"], b["Height"]
-        by = primary_h - b["Y"] - bh  # Quartz counts from the top; AppKit from the bottom.
-        if not (x0 <= bx + bw / 2 <= x1 and y0 <= by + bh / 2 <= f.origin.y + f.size.height):
-            continue  # The Dock is on another screen.
-        if bw > bh and by <= y0 + 1:
-            y0 = by + bh
-        elif bh > bw and bx <= x0 + 1:
-            x0 = bx + bw
-        elif bh > bw:
-            x1 = bx
-    return AppKit.NSMakeRect(x0, y0, x1 - x0, y1 - y0)
+    fullscreen = any(w.get("kCGWindowOwnerName") == "Dock"
+                     and w.get("kCGWindowName") == "Fullscreen Backdrop" for w in on_screen)
+    return screen.frame() if fullscreen else screen.visibleFrame()
 
 
 class FlowBar:
@@ -126,7 +110,11 @@ class FlowBar:
             "top": f.origin.y + f.size.height - (u.origin.y + u.size.height),
             "bottom": u.origin.y - f.origin.y,
         }
-        if insets != self._insets:
+        # macOS moves visibleFrame by a point or two now and then; following
+        # that would twitch the bar. Only a real change (Dock, menu bar,
+        # full screen) moves it.
+        if self._insets is None or any(abs(insets[k] - self._insets[k]) >= 4 for k in insets):
+            print(f"[vox] flow bar area {insets}", flush=True)
             self._insets = insets
             self.window.run_js(f"window.hud && window.hud.area({json.dumps(insets)})")
 
