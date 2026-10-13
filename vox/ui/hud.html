@@ -115,6 +115,12 @@
   .line.v { width: 0; border-left: 2px dashed var(--brand); }
   .ghost { border-radius: 999px; border: 2px dashed rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(0, 0, 0, 0.35); background: rgba(255, 122, 89, 0.18); transition: left 140ms var(--spring), top 140ms var(--spring), width 140ms ease, height 140ms ease; }
 
+  /* Windows: the window is see-through by a colour key, which has no
+     partial alpha. A soft shadow or a blur would show as a dark box, so
+     the pill keeps only its 1 px edge there. */
+  html.win .pill, html.win .pill.dragging { box-shadow: 0 0 0 1px var(--hud-edge) !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  html.win .pill[data-phase="idle"] { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.38) !important; }
+
   .pill.dragging { transform: scale(1.1); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 14px 32px rgba(0, 0, 0, 0.35); opacity: 1; }
   .pill[data-phase="idle"] .content, .pill[data-phase="hidden"] .content { opacity: 0; transition: opacity 60ms ease; }
 
