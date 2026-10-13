@@ -31,16 +31,24 @@ class Config:
     # Labels of character keys, keyed by key id, saved at capture time:
     # a virtual key code alone does not tell which letter it is.
     hotkey_labels: dict[str, str] = field(default_factory=dict)
-    mode: str = "hold"  # "hold" or "toggle"
+    # The hotkey works one way: hold to talk, double-tap for hands-free.
+    mode: str = "hold"
     output: str = "paste"  # "paste" or "copy"
     sounds: bool = True
+    # Keep the idle capsule on screen. When off, the bar still shows while
+    # the user dictates; the main window opens from the menu bar.
+    show_bar: bool = True
+    # Where the user dragged the flow bar; None means bottom centre.
+    flow_bar: dict | None = None
 
     @classmethod
     def load(cls) -> "Config":
         try:
             raw = json.loads((data_dir() / "config.json").read_text(encoding="utf-8"))
             known = {k: v for k, v in raw.items() if k in cls.__dataclass_fields__}
-            return cls(**known)
+            cfg = cls(**known)
+            cfg.mode = "hold"  # vox 0.2 also had a toggle mode.
+            return cfg
         except (OSError, ValueError, TypeError):
             return cls()
 

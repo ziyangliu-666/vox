@@ -638,3 +638,174 @@ button.keys:active .keycap,
 }
 .switch[aria-checked="true"] .track { background: var(--accent); box-shadow: none; }
 .switch[aria-checked="true"] .track::after { transform: translateX(10px); }
+
+/* ------------------------------------------------------------------ */
+/* Double-tap: second line of the hotkey card                          */
+/* ------------------------------------------------------------------ */
+
+.hotkey.has-dt { margin-bottom: 0; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.dt-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  height: 38px;
+  margin-bottom: var(--s1);
+  padding: 0 var(--s3) var(--s1) var(--s4);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+/* Close the column gap of .settings, so the card reads as one piece; a
+   hairline marks the second line instead. */
+.hotkey.has-dt + .dt-row { margin-top: calc(-1 * var(--s2)); box-shadow: inset 0 1px 0 var(--line); }
+.dt-row > span:first-child { flex: 1; }
+.select { position: relative; display: inline-flex; align-items: center; }
+.select select {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 26px;
+  padding: 0 24px 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font: inherit;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.select select:hover { box-shadow: inset 0 0 0 1px var(--text-3); }
+.select select:focus-visible { outline: none; box-shadow: var(--focus); }
+.select svg { position: absolute; right: 8px; pointer-events: none; color: var(--text-2); }
+
+.try-sub { margin-top: var(--s2); font-size: var(--fs-sm); color: var(--text-3); }
+
+/* "See all" next to the Recent title */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; }
+.see-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: -2px;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.see-all:hover { color: var(--text); background: var(--surface); }
+
+/* ------------------------------------------------------------------ */
+/* History view                                                        */
+/* ------------------------------------------------------------------ */
+
+#top.fill { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+.h-head { display: flex; align-items: center; gap: var(--s2); height: 28px; margin-bottom: var(--s3); }
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: -6px;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+}
+.icon-btn:hover { color: var(--text); background: var(--surface); }
+.h-title { font-size: var(--fs-lg); font-weight: 600; }
+.h-count { font-size: var(--fs-sm); color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.search { position: relative; display: flex; align-items: center; margin-bottom: var(--s2); }
+.search > svg { position: absolute; left: 10px; color: var(--text-3); pointer-events: none; }
+.search input {
+  width: 100%;
+  height: 32px;
+  padding: 0 30px 0 32px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  font: inherit;
+  color: var(--text);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.search input::placeholder { color: var(--text-3); }
+.search input:focus { outline: none; box-shadow: var(--focus); }
+.search input::-webkit-search-cancel-button { display: none; }
+.search .clear {
+  position: absolute;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-3);
+}
+.search .clear:hover { color: var(--text); }
+
+.h-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 calc(-1 * var(--s2));
+  padding: 0 var(--s2);
+  overscroll-behavior: contain;
+}
+.day {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--s2) var(--s1) var(--s1);
+  background: var(--bg);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.del-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: -6px;
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+}
+.row:hover .del-btn, .del-btn:focus-visible { opacity: 1; }
+.del-btn:hover { color: var(--danger); background: var(--surface-2); }
+.row.removing { animation: remove 180ms var(--ease) forwards; }
+@keyframes remove { to { opacity: 0; height: 0; min-height: 0; padding-top: 0; padding-bottom: 0; } }
+
+.h-more { display: flex; justify-content: center; padding: var(--s3) 0; }
+.h-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  padding: 72px var(--s4) 0;
+  color: var(--text-3);
+  text-align: center;
+}
+.h-empty svg { color: var(--text-3); opacity: 0.7; }
+.h-empty span { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Clear history: inline confirm in the bottom bar, never a browser dialog. */
+.h-bar { width: 100%; display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); }
+.h-bar .q { flex: 1; color: var(--text); font-size: var(--fs-sm); }
+.link.danger:hover { color: var(--danger); }
+.btn-danger {
+  height: 24px;
+  padding: 0 var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--danger);
+  color: #ffffff;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.h-bar.confirm { animation: reveal var(--t-fast) var(--ease-out); }
+
+/* Fixed hotkey behaviour, stated under the title. */
+.hotkey-sub { margin-top: 2px; font-size: var(--fs-xs); line-height: 1.35; color: var(--text-3); }
+.switches { display: inline-flex; gap: var(--s4); }

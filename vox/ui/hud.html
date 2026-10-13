@@ -27,7 +27,12 @@
 
   /* Stage = the HUD window (300 x 72 by default). The pill sits on its
      bottom edge with room above and at the sides for the shadow. */
-  .stage { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 14px; pointer-events: none; }
+  .stage { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 0 0 14px; pointer-events: none; }
+  /* The pill lies flat against the screen edge it is docked to; Python
+     picks the edge with hud.dock() and moves the window there. */
+  .stage[data-dock="top"] { align-items: flex-start; padding: 14px 0 0; }
+  .stage[data-dock="left"] { align-items: center; justify-content: flex-start; padding: 0 0 0 14px; }
+  .stage[data-dock="right"] { align-items: center; justify-content: flex-end; padding: 0 14px 0 0; }
 
   .pill {
     position: relative;
@@ -50,6 +55,57 @@
      dark wallpapers; the low fill keeps it quiet on light ones. */
   .pill[data-phase="idle"] { height: 10px; background: var(--hud-idle); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.38), 0 2px 6px rgba(0, 0, 0, 0.22); opacity: 0.9; }
   .pill[data-phase="hidden"] { height: 10px; opacity: 0; transform: scale(0.8); }
+  /* Hover says "you can grab this"; drag lifts the pill off the screen. */
+  .pill.hover { transform: scale(1.06); }
+  .pill.hover[data-phase="idle"] { width: 60px !important; height: 14px; opacity: 1; }
+  /* On a side edge the pill stands upright while it has no text: a thin
+     strip at rest, a column of level bars while listening. Text never
+     turns sideways; for "done" and "error" the pill lies flat again and
+     slides out from the edge. */
+  .pill.v { width: 32px !important; height: 84px; }
+  .pill.v[data-phase="idle"], .pill.v[data-phase="hidden"] { width: 10px !important; height: 46px; }
+  .pill.v.hover[data-phase="idle"] { width: 14px !important; height: 60px; }
+  .pill.v[data-phase="cancelled"] { height: 32px; }
+  .pill.v .content { flex-direction: column; padding: 12px 0; }
+  .pill.v .bars { flex-direction: column; height: auto; width: 20px; }
+  .pill.v .bars i { height: 3px; }
+  .pill.v #hint { display: none !important; }
+  /* Upright and locked: the lock sits above the bars, so the pill grows. */
+  .pill.v.locked[data-phase="listening"] { height: 104px; }
+  /* ---------- free mode (macOS) ----------
+     The window covers the whole screen and lets clicks through; the pill
+     sits at an anchor point on the edge it is docked to. The anchor's
+     transform puts the pill's flat side on that point, so a pill that
+     grows stays against its edge. Moves run on a spring curve. */
+  .anchor { display: contents; }
+  .stage.free { display: block; padding: 0; }
+  .stage.free .anchor { display: block; position: absolute; left: 50%; bottom: 4px; }
+  .anchor[data-edge="bottom"] { transform: translate(-50%, -100%); }
+  .anchor[data-edge="top"] { transform: translate(-50%, 0); }
+  .anchor[data-edge="left"] { transform: translate(0, -50%); }
+  .anchor[data-edge="right"] { transform: translate(-100%, -50%); }
+  .anchor[data-edge="drag"] { transform: translate(-50%, -50%); }
+  .anchor.fly { transition: left 420ms var(--spring), top 420ms var(--spring), transform 420ms var(--spring); }
+  :root { --spring: cubic-bezier(0.34, 1.32, 0.64, 1); --brand: #ff7a59; }
+  .stage.free .pill { transition: width 240ms var(--spring), height 240ms var(--spring), background var(--hud-morph), opacity 120ms ease, transform 160ms var(--spring); }
+
+  /* Guides: shown only while dragging. Rails on the four edges, a dot on
+     each magnet, and for the target: a bright rail, a ring on the magnet,
+     an alignment line into the screen, and a ghost of where the pill lands. */
+  .guides { position: absolute; inset: 0; opacity: 0; transition: opacity 160ms ease; pointer-events: none; }
+  .guides.on { opacity: 1; }
+  .guides i { position: absolute; display: block; }
+  .rail { background: rgba(255, 122, 89, 0.28); border-radius: 2px; transition: background 120ms ease; }
+  .rail.on { background: var(--brand); box-shadow: 0 0 10px rgba(255, 122, 89, 0.55); }
+  .tick { width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--brand), 0 1px 4px rgba(0, 0, 0, 0.35); transition: transform 140ms var(--spring); }
+  .tick.on { transform: scale(1.7); }
+  .line { opacity: 0; transition: opacity 120ms ease; }
+  .line.on { opacity: 1; }
+  .line.h { height: 0; border-top: 2px dashed var(--brand); }
+  .line.v { width: 0; border-left: 2px dashed var(--brand); }
+  .ghost { border-radius: 999px; border: 2px dashed rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(0, 0, 0, 0.35); background: rgba(255, 122, 89, 0.18); transition: left 140ms var(--spring), top 140ms var(--spring), width 140ms ease, height 140ms ease; }
+
+  .pill.dragging { transform: scale(1.1); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5), 0 14px 32px rgba(0, 0, 0, 0.35); opacity: 1; }
   .pill[data-phase="idle"] .content, .pill[data-phase="hidden"] .content { opacity: 0; transition: opacity 60ms ease; }
 
   .content {
@@ -74,11 +130,19 @@
   .pill[data-phase="transcribing"] .bars i { opacity: 0.8; }
   /* Toggle mode needs room for its hint: drop two bars at each end. */
   .pill.toggle .bars i:nth-child(-n+2), .pill.toggle .bars i:nth-last-child(-n+2) { display: none; }
+  /* Locked adds a lock icon: drop one more bar at each end and tighten gaps,
+     so the hint still fits in a 300 px window. */
+  .pill.locked:not(.v) .bars i:nth-child(-n+3), .pill.locked:not(.v) .bars i:nth-last-child(-n+3) { display: none; }
+  .pill.locked:not(.v) .content { gap: 6px; }
+  .pill.locked:not(.v) .hint { gap: 3px; }
 
   .hint { font-size: 12px; color: var(--hud-fg-2); display: inline-flex; align-items: center; gap: 4px; }
   .chip { padding: 1px 5px; border-radius: 4px; background: var(--hud-chip); color: var(--hud-fg); font-size: 11px; line-height: 16px; }
   .text { overflow: hidden; text-overflow: ellipsis; }
   .tag { font-size: 11px; color: var(--hud-fg-3); }
+  /* Hands-free lock: tells the user the mic stays open without the key. */
+  .ico-lock { color: var(--hud-fg-2); }
+  .ico-lock svg { width: 12px; height: 12px; }
   .ico-ok { color: var(--hud-ok); }
   .ico-warn { color: var(--hud-warn); }
   .ico-x { color: rgba(255, 255, 255, 0.5); }
@@ -104,8 +168,11 @@
 </head>
 <body>
 <div class="stage" id="stage">
+  <div class="guides" id="guides" aria-hidden="true"></div>
+  <div class="anchor" id="anchor">
   <div class="pill" id="pill" data-phase="hidden" role="status" aria-live="polite">
     <div class="content" id="content">
+      <span class="ico ico-lock" id="lock" hidden><svg viewBox="0 0 12 12" fill="none"><rect x="2.2" y="5.2" width="7.6" height="5.6" rx="1.4" fill="currentColor"/><path d="M3.9 5.2V3.9a2.1 2.1 0 0 1 4.2 0v1.3" stroke="currentColor" stroke-width="1.3"/></svg></span>
       <span class="bars" id="bars" hidden></span>
       <span class="ico ico-ok" id="ok" hidden><svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.8 8.3l2.1 2.1 4.3-4.6" stroke="#111" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       <span class="ico ico-warn" id="warn" hidden><svg viewBox="0 0 16 16" fill="none"><path d="M8 1.8l6.6 11.6H1.4L8 1.8z" fill="currentColor"/><path d="M8 6.3v3.2" stroke="#111" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.4" r="0.9" fill="#111"/></svg></span>
@@ -114,6 +181,7 @@
       <span class="text" id="text" hidden></span>
       <span class="tag" id="tag" hidden></span>
     </div>
+  </div>
   </div>
 </div>
 
@@ -127,7 +195,7 @@
   const pill = document.getElementById("pill");
   const content = document.getElementById("content");
   const bars = document.getElementById("bars");
-  const KEYS = ["ok", "warn", "x", "hint", "text", "tag"];
+  const KEYS = ["lock", "ok", "warn", "x", "hint", "text", "tag"];
   const els = {};
   KEYS.forEach((k) => { els[k] = document.getElementById(k); });
   for (let i = 0; i < N; i++) bars.appendChild(document.createElement("i"));
@@ -135,7 +203,8 @@
 
   // The pill may use the window width minus room for the shadow. If Python
   // makes the HUD window wider, long text gets more room automatically.
-  const maxW = () => Math.max(120, stage.clientWidth - 28);
+  // In free mode the window is the whole screen; the pill keeps its old cap.
+  const maxW = () => Math.max(120, Math.min(stage.classList.contains("free") ? 332 : 1e9, stage.clientWidth - 28));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   let phase = "hidden";
@@ -155,16 +224,18 @@
       const k = target > shown ? 0.55 : 0.18;
       shown += (target - shown) * k;
       const lv = Math.min(1, shown * 1.35);
+      const prop = pill.classList.contains("v") ? "width" : "height";
       barEls.forEach((b, i) => {
         const breathe = 3 * (0.5 + 0.5 * Math.sin(t * 0.0035 + i * 0.55));
         const wob = 0.72 + 0.28 * Math.sin(t * 0.011 + i * 1.9);
-        b.style.height = (4 + breathe + 14 * lv * env[i] * wob).toFixed(1) + "px";
+        b.style[prop] = (4 + breathe + 14 * lv * env[i] * wob).toFixed(1) + "px";
       });
     } else if (phase === "transcribing") {
       // The bars settle into a low travelling wave: "working", no words.
+      const prop = pill.classList.contains("v") ? "width" : "height";
       barEls.forEach((b, i) => {
         const w = 0.5 + 0.5 * Math.sin(t * 0.009 - i * 0.65);
-        b.style.height = (4 + 6 * w).toFixed(1) + "px";
+        b.style[prop] = (4 + 6 * w).toFixed(1) + "px";
       });
     } else {
       return;
@@ -202,7 +273,9 @@
     });
   }
 
+  let last = { phase: "hidden" };
   function apply(p) {
+    last = p;
     const next = p && p.phase ? p.phase : "hidden";
     const changed = next !== phase;
     phase = next;
@@ -214,7 +287,8 @@
       const hint = p.mode === "toggle"
         ? (p.key ? `<span class="chip">${esc(p.key)}</span>to stop ·<span class="chip">esc</span>to cancel` : "Press again to stop")
         : "";
-      show({ bars: true, hint });
+      // Hands-free (locked): a lock before the bars, same stop/cancel hint.
+      show({ bars: true, hint, lock: !!p.locked });
       if (changed) { shown = 0; target = 0; }
     } else if (next === "transcribing") {
       show({ bars: true });
@@ -236,11 +310,21 @@
     }
 
     pill.classList.toggle("toggle", next === "listening" && p.mode === "toggle");
+    pill.classList.toggle("locked", next === "listening" && !!p.locked);
     pill.dataset.phase = next;
     pill.setAttribute("aria-label", { listening: "Listening", transcribing: "Transcribing", done: "Done", cancelled: "Cancelled", error: p.message || "Error" }[next] || "");
 
+    // Upright on a side edge, unless the pill has text to show.
+    const side = ["left", "right"].includes(stage.dataset.dock);
+    const upright = side && ["idle", "hidden", "listening", "transcribing", "cancelled"].includes(next);
+    if (upright !== pill.classList.contains("v")) {
+      barEls.forEach((b) => { b.style.width = ""; b.style.height = ""; });
+    }
+    pill.classList.toggle("v", upright);
+
     // Size the pill to its content so width can animate (auto cannot).
-    if (next === "idle" || next === "hidden") pill.style.width = IDLE_W + "px";
+    if (upright) pill.style.width = "";
+    else if (next === "idle" || next === "hidden") pill.style.width = IDLE_W + "px";
     else pill.style.width = Math.min(cap, Math.ceil(content.scrollWidth)) + "px";
 
     if (changed && next !== "idle" && next !== "hidden") {
@@ -249,10 +333,177 @@
     if (next === "listening" || next === "transcribing") loop();
   }
 
+  // ---------- free mode: dock, drag, guides (macOS) ----------
+  const anchor = document.getElementById("anchor");
+  const guides = document.getElementById("guides");
+  const GAP = 4;                  // pill to screen edge, CSS px
+  const MAGNETS = [1 / 3, 1 / 2, 2 / 3];
+  const PULL = 48;                // a drop this close to a magnet lands on it
+  const LINE = 160;               // length of the alignment line
+  let area = null;                // usable insets {left, top, right, bottom}
+  let place = { edge: "bottom", t: 0.5 };
+  let drag = null;
+  const api = (m, ...a) => {
+    const p = window.pywebview && window.pywebview.api;
+    return p && p[m] ? p[m](...a) : null;
+  };
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const flat = (edge) => edge === "bottom" || edge === "top";
+
+  function box() {
+    return { x: area.left, y: area.top, w: innerWidth - area.left - area.right, h: innerHeight - area.top - area.bottom };
+  }
+  function anchorFor(p) {
+    const b = box();
+    if (p.edge === "bottom") return [b.x + p.t * b.w, b.y + b.h - GAP];
+    if (p.edge === "top") return [b.x + p.t * b.w, b.y + GAP];
+    if (p.edge === "left") return [b.x + GAP, b.y + p.t * b.h];
+    return [b.x + b.w - GAP, b.y + p.t * b.h];
+  }
+  function setAnchor(x, y, edge) {
+    anchor.style.left = x + "px";
+    anchor.style.top = y + "px";
+    anchor.dataset.edge = edge;
+  }
+  function layout(animate) {
+    anchor.classList.toggle("fly", !!animate);
+    stage.dataset.dock = place.edge;
+    const [x, y] = anchorFor(place);
+    setAnchor(x, y, place.edge);
+    apply(last);
+    report();
+  }
+
+  // Where a pill centred at (px, py) would land: the nearest edge, then a
+  // magnet on that edge if it is close enough.
+  function targetAt(px, py) {
+    const b = box();
+    const fx = clamp((px - b.x) / b.w, 0, 1), fy = clamp((py - b.y) / b.h, 0, 1);
+    const dist = { bottom: (1 - fy) * b.h, top: fy * b.h, left: fx * b.w, right: (1 - fx) * b.w };
+    const edge = Object.keys(dist).reduce((a, k) => (dist[k] < dist[a] ? k : a));
+    const len = flat(edge) ? b.w : b.h;
+    let t = flat(edge) ? fx : fy;
+    const near = MAGNETS.reduce((a, m) => (Math.abs(m - t) < Math.abs(a - t) ? m : a));
+    const snapped = Math.abs(near - t) * len < PULL;
+    if (snapped) t = near;
+    t = clamp(t, 60 / len, 1 - 60 / len);
+    return { edge, t, snapped, magnet: near };
+  }
+
+  function buildGuides() {
+    const b = box();
+    let html = "";
+    const rail = (e, x, y, w, h) => `<i class="rail" data-e="${e}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px"></i>`;
+    html += rail("bottom", b.x + 8, b.y + b.h - 3, b.w - 16, 3) + rail("top", b.x + 8, b.y, b.w - 16, 3);
+    html += rail("left", b.x, b.y + 8, 3, b.h - 16) + rail("right", b.x + b.w - 3, b.y + 8, 3, b.h - 16);
+    for (const e of ["bottom", "top", "left", "right"]) {
+      for (const m of MAGNETS) {
+        const [x, y] = anchorFor({ edge: e, t: m });
+        html += `<i class="tick" data-e="${e}" data-m="${m}" style="left:${x}px;top:${y}px"></i>`;
+      }
+    }
+    html += `<i class="line" id="gline"></i><i class="ghost" id="ghost"></i>`;
+    guides.innerHTML = html;
+  }
+
+  function showGuides(tg) {
+    guides.querySelectorAll(".rail").forEach((r) => r.classList.toggle("on", r.dataset.e === tg.edge));
+    guides.querySelectorAll(".tick").forEach((k) =>
+      k.classList.toggle("on", tg.snapped && k.dataset.e === tg.edge && Number(k.dataset.m) === tg.magnet));
+    const [x, y] = anchorFor(tg);
+    const line = document.getElementById("gline");
+    line.className = "line " + (flat(tg.edge) ? "v" : "h") + (tg.snapped ? " on" : "");
+    if (tg.edge === "bottom") Object.assign(line.style, { left: x - 1 + "px", top: y - LINE + "px", height: LINE + "px", width: "" });
+    if (tg.edge === "top") Object.assign(line.style, { left: x - 1 + "px", top: y + "px", height: LINE + "px", width: "" });
+    if (tg.edge === "left") Object.assign(line.style, { left: x + "px", top: y - 1 + "px", width: LINE + "px", height: "" });
+    if (tg.edge === "right") Object.assign(line.style, { left: x - LINE + "px", top: y - 1 + "px", width: LINE + "px", height: "" });
+    // The ghost has the pill's size in the orientation of the target edge.
+    const r = pill.getBoundingClientRect();
+    const turn = flat(tg.edge) === pill.classList.contains("v");
+    const w = turn ? r.height : r.width, h = turn ? r.width : r.height;
+    const g = document.getElementById("ghost");
+    const gx = tg.edge === "left" ? x : tg.edge === "right" ? x - w : x - w / 2;
+    const gy = tg.edge === "top" ? y : tg.edge === "bottom" ? y - h : y - h / 2;
+    Object.assign(g.style, { left: gx + "px", top: gy + "px", width: w + "px", height: h + "px" });
+  }
+
+  // Tell Python where the pill is, for its hover hit test.
+  let reportQueued = false;
+  function report() {
+    if (reportQueued) return;
+    reportQueued = true;
+    requestAnimationFrame(() => {
+      reportQueued = false;
+      const r = pill.getBoundingClientRect();
+      api("pill_rect", [r.left, r.top, r.width, r.height]);
+    });
+  }
+  new ResizeObserver(report).observe(pill);
+  anchor.addEventListener("transitionend", report);
+
+  pill.addEventListener("pointerdown", (e) => {
+    if (!area || e.button !== 0) return;
+    e.preventDefault();
+    pill.setPointerCapture(e.pointerId);
+    const r = pill.getBoundingClientRect();
+    drag = { sx: e.clientX, sy: e.clientY, dx: r.left + r.width / 2 - e.clientX, dy: r.top + r.height / 2 - e.clientY, moved: false };
+  });
+  pill.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    if (!drag.moved) {
+      if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) < 3) return;
+      drag.moved = true;
+      anchor.classList.remove("fly");
+      pill.classList.add("dragging");
+      buildGuides();
+      guides.classList.add("on");
+    }
+    const cx = e.clientX + drag.dx, cy = e.clientY + drag.dy;
+    setAnchor(cx, cy, "drag");
+    drag.target = targetAt(cx, cy);
+    showGuides(drag.target);
+  });
+  function endDrag(e) {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    try { pill.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (!d.moved) { api("clicked"); return; }
+    pill.classList.remove("dragging");
+    guides.classList.remove("on");
+    place = { edge: d.target.edge, t: Math.round(d.target.t * 10000) / 10000 };
+    layout(true);
+    api("save_place", place);
+    api("drag_end");
+  }
+  pill.addEventListener("pointerup", endDrag);
+  pill.addEventListener("pointercancel", endDrag);
+
   let external = false;
   window.hud = {
     set: (p) => { external = true; stopMock(); apply(p || {}); },
     level: (x) => { external = true; target = Math.max(0, Math.min(1, Number(x) || 0)); },
+    dock: (edge) => { stage.dataset.dock = edge || "bottom"; apply(last); },
+    hover: (on) => pill.classList.toggle("hover", !!on),
+    drag: (on) => pill.classList.toggle("dragging", !!on),
+    // The pill's box in window CSS px, for Python's hit test.
+    rect: () => { const r = pill.getBoundingClientRect(); return JSON.stringify([r.left, r.top, r.width, r.height]); },
+    // Free mode: the window covers the screen; insets mark the usable part.
+    area: (insets) => {
+      const first = !area;
+      area = insets;
+      stage.classList.add("free");
+      layout(!first);
+    },
+    restore: (p) => {
+      place = p && p.edge ? p : { edge: "bottom", t: 0.5 };
+      if (area) layout(true);
+    },
+    // For screenshots: draw the guides as if the pill were dragged to (x, y).
+    preview: (x, y) => {
+      buildGuides(); guides.classList.add("on");
+      pill.classList.add("dragging"); setAnchor(x, y, "drag"); showGuides(targetAt(x, y));
+    },
   };
 
   // ---------- mock (plain browser, or "?mock") ----------
@@ -272,6 +523,7 @@
       listening: { phase: "listening", mode: "hold", key },
       listening_silent: { phase: "listening", mode: "hold", key, silent: true },
       listening_toggle: { phase: "listening", mode: "toggle", key },
+      hands_free: { phase: "listening", mode: "toggle", locked: true, key },
       transcribing: { phase: "transcribing", key },
       done: { phase: "done", output: "paste", key, text: "Let's move the review to Thursday afternoon, if that works for everyone." },
       done_copy: { phase: "done", output: "copy", key, text: "Remind me to send the invoice to Marta before Friday." },

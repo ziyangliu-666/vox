@@ -25,6 +25,7 @@ The state picks the view; the user never picks it.
 |---|---|
 | Set-up | account is not `ready`, or a macOS permission is `missing`, or history is empty |
 | Home | all of the above are done |
+| History | the user opens it with "All N" in Home (account must be `ready`) |
 
 Set-up shows "Set up vox" and a numbered list. The first step that is not done is open. Steps after the open step always show as pending (number, grey title), also when their own condition is true, so the list reads in order. A step that turns done pops its check once. A switch between views fades in (320 ms).
 
@@ -34,7 +35,7 @@ Set-up shows "Set up vox" and a numbered list. The first step that is not done i
 |---|---|---|---|
 | 1 | Log in | depends on `account` (see below) | Connected + "Log out" |
 | 2 | Allow access (macOS only) | one row per permission; meta "N to go" | Access on |
-| 3 | Try it | "Hold [key] and speak" ("Press" in toggle mode); the key is clickable | (view switches to Home) |
+| 3 | Try it | "Hold [key] and speak" ("Press" in toggle mode); the key is clickable. In hold mode with `double_tap` = `hands_free`, one faint line: "Double-tap for hands-free" | (view switches to Home) |
 
 On Windows the permission step is not shown, so "Try it" is step 2.
 
@@ -66,14 +67,29 @@ Dots: granted = accent, missing = danger, unknown = warn. `unknown` does not blo
 ### Home
 
 1. Account row: green check, "Connected", "Log out".
-2. Hotkey row: "Hotkey", a pencil "Change" button, keycaps. The row has a fixed height of 68 px, so capture does not move it.
-3. If `hotkey.warning` is not null: one amber line with a warning icon under the row.
-4. Mode: segmented "Hold to talk" / "Press to toggle".
-5. Output: segmented "Paste into app" / "Copy only".
-6. "Recent": up to 5 rows, newest first. Each row has the time, one line of text with an ellipsis, and a copy button. Click a row to show the full text (selectable); click again to close it.
-7. Footer: "vox 0.2.0" on the left, a "Sounds" switch on the right (calls `set_sounds(bool)`).
+2. Hotkey card, line 1: "Hotkey", a pencil "Change" button, keycaps. This line has a fixed height of 68 px, so capture does not move it.
+3. Hotkey card, line 2 (hold mode only): "Double-tap" and a native select: "Hands-free", "Paste last", "Open vox", "Off" (calls `set_double_tap(value)`). A double-tap has no meaning in toggle mode, so the line is hidden there.
+4. If `hotkey.warning` is not null: one amber line with a warning icon under the card.
+5. Mode: segmented "Hold to talk" / "Press to toggle".
+6. Output: segmented "Paste into app" / "Copy only".
+7. "Recent": the newest rows. Each row has the time, one line of text with an ellipsis, and a copy button. Click a row to show the full text (selectable); click again to close it. When `history_total` > 5, a quiet "All N ›" link sits at the right of the title.
+8. Footer: "vox 0.2.0" on the left, a "Sounds" switch on the right (calls `set_sounds(bool)`).
 
-The tallest home view (warning line and 5 rows) is 504 px. The window is 520 px, so nothing scrolls. An open history row can make the page scroll; that is a user action, so it is acceptable.
+Recent shows 5 rows, minus 1 for the double-tap line and minus 1 for the warning line. Each of those lines takes about one row of height. The tallest home view is 489 px (double-tap, warning, 3 rows). The window is 520 px, so nothing scrolls. An open row can make the page scroll; that is a user action, so it is acceptable.
+
+### History view
+
+The History view opens inside the window. It replaces Home until the user goes back.
+
+- **Head:** a back chevron, "History", and the result count in grey.
+- **Search:** a field with a magnifier icon. It gets focus when the view opens. It filters as you type (150 ms debounce) and has a ✕ to clear.
+- **List:** it scrolls inside the view, grouped by day. Sticky day labels read "Today", "Yesterday", then "Sun, Oct 11" (the year is added for other years). Rows are the same as Recent, plus a trash button that shows on hover or focus. Delete collapses the row (180 ms) and calls `delete_history(id)`.
+- **Paging:** `get_history(query, offset, 50)`. The next page loads when the list is within 160 px of its end. A small spinner shows while a page loads.
+- **Empty states:** a clock icon and "No history yet"; a magnifier and "No matches for “query”".
+- **Bottom bar:** "Clear history". A click shows an inline confirm: "Clear all N?", "Cancel", and a red "Clear" (calls `clear_history()`). There are no browser dialogs.
+- **Keys:** Esc steps back one level: confirm, then search text, then the view. Cmd/Ctrl+F or "/" focuses the search field.
+
+If `history_total` grows while the view is open (a new transcript), the page fetches the list again.
 
 ### Hotkey states
 
@@ -99,6 +115,7 @@ The capsule is dark in light and dark mode, with white content. Its width animat
 | `idle` | 46 x 10, opacity 0.9 | nothing; a light edge keeps it visible on dark wallpapers |
 | `listening` (hold) | ~100 x 32 | 12 white bars driven by `level(x)` |
 | `listening` (toggle) | ~265 x 32 | 8 bars + "[key] to stop · [esc] to cancel"; the keys are small chips |
+| `listening` (hands-free, `locked: true`) | ~270 x 32 | a small lock + 6 bars + the same hint. Upright on a side edge: the lock sits above the bars and the pill grows to 104 px. |
 | `transcribing` | ~100 x 32 | the same bars at 80 % white, in a low wave that travels left to right |
 | `done` | up to max | green check + text + grey tag "Pasted" or "Copied" (from `output`) |
 | `cancelled` | 40 x 32 | grey ✕; Python sets `idle` after about 0.6 s |
@@ -109,7 +126,7 @@ Done text is 13 px and keeps its **end** visible ("…the last words"), so the u
 Level meter:
 
 - Centre bars are tallest.
-- At silence each bar is 4 px and breathes by up to 1.6 px, so the bar never looks frozen.
+- At silence each bar is 4 px and breathes by up to 3 px, so the bar never looks frozen.
 - Attack is fast (0.55 per frame) and release is slow (0.18 per frame). Speech onsets show at once and gaps fade.
 - Maximum bar height is about 20 px.
 
@@ -169,5 +186,5 @@ Bar enter and exit changes take 150 ms or less. With `prefers-reduced-motion`, a
 
 A page uses its built-in mock when no `window.pywebview` exists after 300 ms, or when the URL has `?mock`. The hash selects the state.
 
-- `index.html`: `#first_run`, `#logged_out`, `#logging_in`, `#learning`, `#ready`, `#ready_full` (5 rows), `#ready_empty`, `#capturing`, `#permissions`, `#error`, `#warning`, `#win`. Login runs logging_in, learning (5 s), then ready. Capture takes a real key press. Open Settings grants after 1.5 s.
-- `hud.html`: `#idle`, `#listening`, `#listening_silent`, `#listening_toggle`, `#transcribing`, `#done`, `#done_copy`, `#done_long_zh`, `#cancelled`, `#error`, `#error_retry`, `#hidden`. Each starts from idle, so the expand shows. Only mock mode paints a desktop backdrop.
+- `index.html`: `#first_run`, `#logged_out`, `#logging_in`, `#learning`, `#ready`, `#ready_full` (toggle mode, 5 rows), `#ready_empty`, `#capturing`, `#permissions`, `#error`, `#warning`, `#win`, `#double_tap`, `#history` (60 items over 4 days), `#history_empty`, `#history_search_none`. Delete, clear and search work on the mock list. Login runs logging_in, learning (5 s), then ready. Capture takes a real key press. Open Settings grants after 1.5 s.
+- `hud.html`: `#idle`, `#listening`, `#listening_silent`, `#listening_toggle`, `#transcribing`, `#done`, `#done_copy`, `#done_long_zh`, `#cancelled`, `#error`, `#error_retry`, `#hands_free`, `#hidden`. Each starts from idle, so the expand shows. Only mock mode paints a desktop backdrop.

@@ -7,6 +7,7 @@ would type it over and over.
 
 import sys
 import threading
+import time
 
 from pynput import keyboard
 
@@ -25,6 +26,11 @@ else:
                "shift": "Shift", "shift_r": "Right Shift", "cmd": "Win", "cmd_r": "Right Win"}
 _LABELS.update({"space": "Space", "caps_lock": "Caps Lock", "tab": "Tab",
                 "enter": "Return" if IS_MAC else "Enter", "esc": "Esc"})
+
+
+# A press shorter than TAP_S counts as a tap; a second press within
+# DOUBLE_S of a tap's release is a double-tap.
+TAP_S, DOUBLE_S = 0.3, 0.4
 
 
 def key_id(key) -> tuple[str, str | None]:
@@ -79,12 +85,23 @@ class Hotkey:
     Callbacks run on the pynput thread, so they must return quickly.
     on_start returns False when it did not start recording; the hotkey then
     stays inactive, so the next press is a new start and not a stop.
+
+    Hold mode also knows a double-tap. The first tap starts and stops a clip
+    too short to keep, so nothing is lost by waiting for the second press.
+    on_double returns "lock" when it started a hands-free clip (it then runs
+    on after the key is up, until the next press) or "done" when it ran
+    some other action.
     """
 
-    def __init__(self, ids, mode, on_start, on_stop, on_cancel) -> None:
+    def __init__(self, ids, mode, on_start, on_stop, on_cancel, on_double=None) -> None:
         self.ids = set(ids)
         self.mode = mode
         self._on_start, self._on_stop, self._on_cancel = on_start, on_stop, on_cancel
+        self._on_double = on_double
+        self._locked = False  # Hands-free: recording goes on after the key is up.
+        self._swallow = False  # Ignore the release of a press that ran an action.
+        self._press_t = 0.0
+        self._tap_t = 0.0  # When the last short tap ended.
         self._down: set[str] = set()
         self._active = False
         self._armed = True  # Toggle mode: wait for a full release between presses.
@@ -99,14 +116,14 @@ class Hotkey:
     def set(self, ids, mode) -> None:
         with self._lock:
             self.ids, self.mode = set(ids), mode
-            self._active, self._armed = False, True
+            self._active, self._armed, self._locked = False, True, False
 
     def capture(self, callback) -> None:
         """Record the next key combination; callback(ids, labels) or callback(None, None) on Esc."""
         with self._lock:
             self._capture = [callback, set(), {}]
             if self._active:
-                self._active = False
+                self._active = self._locked = False
                 self._on_cancel()
 
     def cancel_capture(self) -> None:
@@ -133,13 +150,28 @@ class Hotkey:
                     best.update(self._down)
                 return
             if kid == "esc" and self._active:
-                self._active = False
+                self._active = self._locked = False
                 self._on_cancel()
                 return
             if not self.ids <= self._down:
                 return
             if self.mode == "hold":
-                if not self._active:
+                if self._locked:  # A press ends a hands-free clip.
+                    self._active = self._locked = False
+                    self._swallow = True
+                    self._on_stop()
+                elif not self._active:
+                    now = time.monotonic()
+                    if self._on_double and now - self._tap_t < DOUBLE_S:
+                        self._tap_t = 0.0
+                        result = self._on_double()
+                        if result == "lock":
+                            self._active = self._locked = True
+                            return
+                        if result == "done":
+                            self._swallow = True
+                            return
+                    self._press_t = now
                     self._active = self._on_start() is not False
             elif self._armed:
                 self._armed = False
@@ -169,8 +201,14 @@ class Hotkey:
                 return
             if kid not in self.ids:
                 return
-            if self.mode == "hold" and self._active:
+            if self._swallow:
+                self._swallow = bool(self.ids & self._down)
+                return
+            if self.mode == "hold" and self._active and not self._locked:
                 self._active = False
+                now = time.monotonic()
+                if now - self._press_t < TAP_S:
+                    self._tap_t = now
                 self._on_stop()
             if self.mode == "toggle" and not (self.ids & self._down):
                 self._armed = True

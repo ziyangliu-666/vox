@@ -35,16 +35,25 @@
     copy: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="4.5" width="7" height="7" rx="1.6"/><path d="M9.5 4.5V3.6c0-.9-.7-1.6-1.6-1.6H3.6C2.7 2 2 2.7 2 3.6v4.3c0 .9.7 1.6 1.6 1.6h.9"/></svg>',
     pencil: '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M7.8 2.2l2 2L4.3 9.7 1.8 10.2l.5-2.5z"/></svg>',
     warn: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1.8l6.6 11.6H1.4L8 1.8z" fill="currentColor"/><path d="M8 6.3v3.2" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.4" r="0.9" fill="var(--bg)"/></svg>',
+    chevL: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></svg>',
+    chevR: '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>',
+    chevD: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.8L5 6.3l2.5-2.5"/></svg>',
+    search: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="6" r="4.2"/><path d="M9.2 9.2l3 3"/></svg>',
+    x: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5"/></svg>',
+    trash: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h9M5.5 4V2.8h3V4M3.8 4l.6 7.2h5.2l.6-7.2"/></svg>',
+    clock: '<svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="14" cy="14" r="10"/><path d="M14 8.5V14l3.5 2.2"/></svg>',
   };
 
   // ---------- helpers ----------
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const $ = (id) => document.getElementById(id);
 
   const PERMS = [
     { id: "microphone", name: "Microphone", sub: "To hear you", why: "Records your voice while the key is down." },
     { id: "accessibility", name: "Accessibility", sub: "To type for you", why: "Pastes the text into the app you use." },
     { id: "input_monitoring", name: "Input Monitoring", sub: "To see the hotkey", why: "Sees the hotkey while other apps have focus." },
   ];
+
 
   // "unknown" counts as fine: some systems cannot report it, and a step that
   // can never turn green would block the set-up view forever.
@@ -76,10 +85,14 @@
     return `<div class="seg" role="radiogroup" data-index="${idx}"><span class="seg-thumb"></span>${btns}</div>`;
   }
 
+  // Row key: the history id, or the list position for items without one.
+  const rowKey = (h, i) => (h && h.id != null ? "id" + h.id : "i" + i);
+
   // ---------- transient UI (never stored in state) ----------
   const ui = {
-    copied: null,        // { index, text, until }
-    open: null,          // text of the expanded history row
+    view: null,          // "history" while the history view is open
+    copied: null,        // { key, until }
+    open: null,          // key of the expanded row
     confirmUntil: 0,     // hotkey confirm animation
     justDone: {},        // step id -> true for the render where it turns done
     waiting: {},         // permission id -> time when "Open Settings" was clicked
@@ -125,9 +138,10 @@
         meta: permsOk(s) ? "" : `${missing} to go`, body: `<div class="perms">${rows}</div>` });
     }
 
-    const verb = s.mode === "toggle" ? "Press" : "Hold";
+    const verb = "Hold";
+    const sub = !s.capturing ? `<div class="try-sub">Double-tap for hands-free</div>` : "";
     steps.push({ id: "try", done: (s.history || []).length > 0, title: "Try it", meta: "",
-      body: `<div class="try">${verb} ${keyButton(s)} and speak</div>${s.capturing ? `<div style="margin-top:var(--s2)">${cancelKey(true)}</div>` : ""}` });
+      body: `<div class="try">${verb} ${keyButton(s)} and speak</div>${sub}${s.capturing ? `<div style="margin-top:var(--s2)">${cancelKey(true)}</div>` : ""}` });
 
     // The open step is the first one not done. While the last permission
     // turns green, the permission step stays open a moment longer.
@@ -161,45 +175,186 @@
     const confirmed = Date.now() < ui.confirmUntil ? " confirmed" : "";
     const warning = s.hotkey && s.hotkey.warning
       ? `<div class="key-warning" role="note">${I.warn}<span>${esc(s.hotkey.warning)}</span></div>` : "";
+    // The key works one fixed way, so the card states it instead of
+    // offering a choice.
     return `<div class="settings">
       <div class="hotkey${confirmed}">
-        <div class="hotkey-text"><div class="hotkey-title">Hotkey</div></div>
+        <div class="hotkey-text"><div class="hotkey-title">Hotkey</div>
+          <div class="hotkey-sub">Hold to talk<br>Double-tap for hands-free</div></div>
         ${s.capturing ? cancelKey(true) : changeBtn()}
         ${keyButton(s)}
       </div>
       ${warning}
-      ${seg("mode", s.mode, [["hold", "Hold to talk"], ["toggle", "Press to toggle"]])}
       ${seg("output", s.output, [["paste", "Paste into app"], ["copy", "Copy only"]])}
     </div>`;
   }
 
-  function recentView(s) {
-    const now = Date.now();
-    // The warning line takes one row of height; drop one row so the footer
-    // stays inside the fixed 520 px window.
-    const max = s.hotkey && s.hotkey.warning ? 4 : 5;
-    const rows = (s.history || []).slice(0, max).map((h, i) => {
-      const copied = ui.copied && ui.copied.index === i && ui.copied.text === h.text && now < ui.copied.until;
-      const open = ui.open === h.text;
-      return `<li class="row${copied ? " copied" : ""}${open ? " open" : ""}" data-action="expand" data-index="${i}" aria-expanded="${open}">
-        <span class="row-time">${esc(h.time)}</span>
-        <span class="row-text">${esc(h.text)}</span>
-        <button class="copy-btn" data-action="copy" data-index="${i}" aria-label="Copy">${copied ? I.check + "<span>Copied</span>" : I.copy}</button>
-      </li>`;
-    }).join("");
-    return `<div class="recent"><h2 class="section-title">Recent</h2><ul class="rows">${rows}</ul></div>`;
+  function rowHtml(h, key, src, withDelete) {
+    const copied = ui.copied && ui.copied.key === key && Date.now() < ui.copied.until;
+    const open = ui.open === key;
+    return `<li class="row${copied ? " copied" : ""}${open ? " open" : ""}${withDelete && hist.removing[key] ? " removing" : ""}" data-action="expand" data-src="${src}" data-key="${key}" aria-expanded="${open}">
+      <span class="row-time">${esc(h.time)}</span>
+      <span class="row-text">${esc(h.text)}</span>
+      <button class="copy-btn" data-action="copy" data-src="${src}" data-key="${key}" aria-label="Copy">${copied ? I.check + "<span>Copied</span>" : I.copy}</button>
+      ${withDelete ? `<button class="del-btn" data-action="delete" data-key="${key}" aria-label="Delete">${I.trash}</button>` : ""}
+    </li>`;
   }
 
-  function footerView(s, home) {
-    const sw = home
-      ? `<button class="switch" role="switch" aria-checked="${!!s.sounds}" data-action="sounds">Sounds<span class="track"></span></button>` : "";
-    return `<span>vox ${esc(s.version || "")}</span>${sw}`;
+  function recentView(s) {
+    // The window has a fixed height. The hotkey warning takes about one row
+    // of height, so Recent gives one row back while it shows.
+    const max = 5 - (s.hotkey && s.hotkey.warning ? 1 : 0);
+    const rows = (s.history || []).slice(0, max).map((h, i) => rowHtml(h, rowKey(h, i), "recent", false)).join("");
+    const total = s.history_total || 0;
+    const all = total > 5 ? `<button class="see-all" data-action="history">All ${total}${I.chevR}</button>` : "";
+    return `<div class="recent"><div class="section-head"><h2 class="section-title">Recent</h2>${all}</div><ul class="rows">${rows}</ul></div>`;
   }
+
+  function footerView(s, view) {
+    if (view === "history") return historyBar(s);
+    const sw = (on, action, label) =>
+      `<button class="switch" role="switch" aria-checked="${!!on}" data-action="${action}">${label}<span class="track"></span></button>`;
+    const sws = view === "home"
+      ? `<span class="switches">${sw(s.show_bar !== false, "bar", "Flow bar")}${sw(s.sounds, "sounds", "Sounds")}</span>` : "";
+    return `<span>vox ${esc(s.version || "")}</span>${sws}`;
+  }
+
+  // ---------- history view ----------
+  // The list is data fetched with get_history, not state. The view's shell
+  // is built once, so the search field keeps focus and caret while typing;
+  // only the list and the count re-render.
+  const PAGE = 50;
+  const hist = { query: "", items: [], total: 0, loading: false, loaded: false, token: 0, confirm: false, removing: {} };
+
+  const HISTORY_SHELL = `
+    <div class="h-head">
+      <button class="icon-btn" data-action="back" aria-label="Back">${I.chevL}</button>
+      <span class="h-title">History</span><span class="h-count" id="h-count"></span>
+    </div>
+    <div class="search">${I.search}<input id="h-q" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search history"><button class="clear" id="h-clear" data-action="hclear" aria-label="Clear search" hidden>${I.x}</button></div>
+    <div class="h-list" id="h-list"></div>`;
+
+  function historyBar(s) {
+    const total = s.history_total || 0;
+    if (hist.confirm && total > 0) {
+      return `<div class="h-bar confirm"><span class="q">Clear all ${total}?</span><button class="link" data-action="hcancel">Cancel</button><button class="btn-danger" data-action="hconfirm">Clear</button></div>`;
+    }
+    return `<div class="h-bar">${total > 0 ? `<button class="link danger" data-action="hclearall">Clear history</button>` : ""}</div>`;
+  }
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  function dayLabel(iso) {
+    const now = new Date();
+    if (iso === isoDay(now)) return "Today";
+    const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    if (iso === isoDay(y)) return "Yesterday";
+    const d = new Date(iso + "T12:00:00");
+    if (isNaN(d)) return iso || "";
+    const opt = { weekday: "short", month: "short", day: "numeric" };
+    if (d.getFullYear() !== now.getFullYear()) opt.year = "numeric";
+    return d.toLocaleDateString("en-US", opt);
+  }
+
+  function renderList() {
+    const list = $("h-list");
+    if (!list) return;
+    const top = list.scrollTop;
+    let html = "";
+    if (!hist.loaded) {
+      html = hist.loading ? `<div class="h-more"><span class="spinner"></span></div>` : "";
+    } else if (hist.items.length === 0) {
+      html = hist.query
+        ? `<div class="h-empty">${I.search.replace('width="14" height="14"', 'width="28" height="28"')}<span>No matches for “${esc(hist.query)}”</span></div>`
+        : `<div class="h-empty">${I.clock}<span>No history yet</span></div>`;
+    } else {
+      let day = null, open = false;
+      hist.items.forEach((h, i) => {
+        if (h.date !== day) {
+          if (open) html += "</ul>";
+          day = h.date;
+          html += `<div class="day">${esc(dayLabel(day))}</div><ul class="rows">`;
+          open = true;
+        }
+        html += rowHtml(h, rowKey(h, i), "hist", true);
+      });
+      if (open) html += "</ul>";
+      if (hist.loading) html += `<div class="h-more"><span class="spinner"></span></div>`;
+    }
+    list.innerHTML = html;
+    list.scrollTop = top;
+    $("h-count").textContent = hist.loaded && hist.total ? String(hist.total) : "";
+    $("h-clear").hidden = !$("h-q").value;
+  }
+
+  function loadMore(first) {
+    if (!first && (hist.loading || hist.items.length >= hist.total)) return;
+    const tok = hist.token;
+    hist.loading = true;
+    renderList();
+    call("get_history", hist.query, hist.items.length, PAGE).then((r) => {
+      if (tok !== hist.token) return; // a newer search replaced this one
+      hist.loading = false;
+      hist.loaded = true;
+      if (r) {
+        hist.items = hist.items.concat(r.items || []);
+        hist.total = Number(r.total) || 0;
+      }
+      renderList();
+      nearEnd();
+    });
+  }
+
+  function reload() {
+    hist.token += 1;
+    hist.items = [];
+    hist.total = 0;
+    hist.loaded = false;
+    hist.loading = false;
+    hist.removing = {};
+    loadMore(true);
+  }
+
+  // Load the next page when the list is within 160 px of its end. It also
+  // runs after each page, so a tall window fills itself.
+  function nearEnd() {
+    const list = $("h-list");
+    if (list && list.scrollTop + list.clientHeight > list.scrollHeight - 160) loadMore(false);
+  }
+
+  function enterHistory(query) {
+    ui.view = "history";
+    ui.open = null;
+    hist.confirm = false;
+    hist.query = query || "";
+    render();
+    const q = $("h-q");
+    q.value = hist.query;
+    q.focus();
+    reload();
+  }
+
+  function leaveHistory() {
+    ui.view = null;
+    ui.open = null;
+    hist.confirm = false;
+    hist.token += 1;
+    render();
+  }
+
+  let searchTimer = 0;
+  document.addEventListener("input", (e) => {
+    if (e.target.id !== "h-q") return;
+    $("h-clear").hidden = !e.target.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { hist.query = e.target.value.trim(); reload(); }, 150);
+  });
+  document.addEventListener("scroll", (e) => { if (e.target.id === "h-list") nearEnd(); }, true);
 
   // ---------- render ----------
   const last = {};
   function put(id, html, enterClass) {
-    const el = document.getElementById(id);
+    const el = $(id);
     if (last[id] === html) return;
     last[id] = html;
     el.innerHTML = html;
@@ -211,13 +366,23 @@
     return s.account === "ready" && permsOk(s) && (s.history || []).length > 0 && Date.now() >= ui.holdPermsUntil;
   }
 
+  function currentView(s) {
+    if (ui.view === "history" && s.account === "ready") return "history";
+    return isHome(s) ? "home" : "setup";
+  }
+
   function render() {
     const s = state;
     if (!s) return;
-    const view = isHome(s) ? "home" : "setup";
+    const view = currentView(s);
     const enter = ui.lastView !== null && ui.lastView !== view ? "view-enter" : null;
     ui.lastView = view;
-    if (view === "setup") {
+    $("top").classList.toggle("fill", view === "history");
+    if (view === "history") {
+      put("top", HISTORY_SHELL, enter);
+      put("settings", "");
+      put("recent", "");
+    } else if (view === "setup") {
       put("top", stepsView(s), enter);
       put("settings", "");
       put("recent", "");
@@ -226,7 +391,7 @@
       put("settings", settingsView(s), enter);
       put("recent", recentView(s), enter);
     }
-    put("footer", footerView(s, view === "home"));
+    put("footer", footerView(s, view));
   }
 
   function onState(s) {
@@ -256,6 +421,9 @@
         const p = was.find((x) => x.id === st.id);
         if (st.done && p && !p.done) ui.justDone[st.id] = true;
       });
+      // A new transcript while the history view is open: fetch the list
+      // again. A smaller total comes from our own delete or clear.
+      if (ui.view === "history" && (s.history_total || 0) > (prev.history_total || 0)) reload();
     }
     render();
   }
@@ -271,6 +439,12 @@
   window.vox.emit = (msg) => { if (msg && msg.type === "state" && msg.state) onState(msg.state); };
 
   // ---------- interactions ----------
+  const findRow = (src, key) => {
+    const list = src === "hist" ? hist.items : (state.history || []);
+    return list.find((h, i) => rowKey(h, i) === key);
+  };
+  const redraw = (src) => (src === "hist" ? renderList() : render());
+
   document.addEventListener("click", (e) => {
     const t = e.target.closest("[data-action]");
     if (!t || !state) return;
@@ -282,73 +456,152 @@
     else if (a === "mode" && v !== state.mode) call("set_mode", v);
     else if (a === "output" && v !== state.output) call("set_output", v);
     else if (a === "sounds") call("set_sounds", !state.sounds);
-    else if (a === "perm") {
+    else if (a === "bar") call("set_show_bar", state.show_bar === false);
+    else if (a === "history") enterHistory("");
+    else if (a === "back") leaveHistory();
+    else if (a === "hclear") { const q = $("h-q"); q.value = ""; q.focus(); hist.query = ""; reload(); }
+    else if (a === "hclearall") { hist.confirm = true; render(); }
+    else if (a === "hcancel") { hist.confirm = false; render(); }
+    else if (a === "hconfirm") {
+      hist.confirm = false;
+      hist.token += 1;
+      hist.items = []; hist.total = 0; hist.loaded = true; hist.loading = false;
+      call("clear_history");
+      renderList();
+      render();
+    } else if (a === "perm") {
       ui.waiting[v] = Date.now();
       // Stop waiting after 30 s even if the user closed Settings unchanged.
       setTimeout(() => { if (ui.waiting[v] && Date.now() - ui.waiting[v] >= 30000) { delete ui.waiting[v]; render(); } }, 30010);
       render();
       call("open_permission", v);
     } else if (a === "copy") {
-      const i = Number(t.dataset.index);
-      const h = (state.history || [])[i];
+      const src = t.dataset.src, key = t.dataset.key;
+      const h = findRow(src, key);
       if (!h) return;
       call("copy", h.text);
-      ui.copied = { index: i, text: h.text, until: Date.now() + 1400 };
-      render();
-      setTimeout(render, 1420);
+      ui.copied = { key, until: Date.now() + 1400 };
+      redraw(src);
+      setTimeout(() => redraw(src), 1420);
+    } else if (a === "delete") {
+      const key = t.dataset.key;
+      const h = findRow("hist", key);
+      if (!h || hist.removing[key]) return;
+      hist.removing[key] = true;
+      renderList();
+      call("delete_history", h.id);
+      // Remove after the collapse animation.
+      setTimeout(() => {
+        hist.items = hist.items.filter((x, i) => rowKey(x, i) !== key);
+        hist.total = Math.max(0, hist.total - 1);
+        delete hist.removing[key];
+        renderList();
+        nearEnd();
+      }, 190);
     } else if (a === "expand") {
       // Do not collapse a row while the user selects text in it.
       if (String(window.getSelection && window.getSelection()).length > 0) return;
-      const h = (state.history || [])[Number(t.dataset.index)];
-      if (!h) return;
-      ui.open = ui.open === h.text ? null : h.text;
-      render();
+      const key = t.dataset.key;
+      ui.open = ui.open === key ? null : key;
+      redraw(t.dataset.src);
     }
   });
 
+  document.addEventListener("change", (e) => {
+    const t = e.target;
+  });
+
   document.addEventListener("keydown", (e) => {
-    if (state && state.capturing && e.key === "Escape") { e.preventDefault(); call("cancel_capture"); }
+    if (!state) return;
+    if (state.capturing && e.key === "Escape") { e.preventDefault(); call("cancel_capture"); return; }
+    if (ui.view !== "history") return;
+    // History keys: Esc steps back one level (confirm, then search, then
+    // view). Cmd/Ctrl+F and "/" jump to the search field.
+    const q = $("h-q");
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (hist.confirm) { hist.confirm = false; render(); }
+      else if (q && q.value) { q.value = ""; hist.query = ""; reload(); }
+      else leaveHistory();
+    } else if (q && ((e.key === "f" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && document.activeElement !== q))) {
+      e.preventDefault();
+      q.focus();
+      q.select();
+    }
   });
 
   // ---------- mock (plain browser, or "?mock") ----------
   function startMock() {
-    const history = [
-      { text: "Let's move the review to Thursday afternoon, if that works for everyone. I will send the agenda tomorrow morning.", time: "14:02" },
-      { text: "Remind me to send the invoice to Marta before Friday.", time: "13:47" },
-      { text: "The build passes locally but fails on the Windows runner.", time: "11:20" },
+    // 60 items over 4 days, newest first. One Chinese entry, escaped so the
+    // source stays ASCII, checks CJK layout in the list.
+    const POOL = [
+      "Let's move the review to Thursday afternoon, if that works for everyone. I will send the agenda tomorrow morning.",
+      "Remind me to send the invoice to Marta before Friday.",
+      "The build passes locally but fails on the Windows runner.",
+      "周五之前把发票发给玛尔塔，顺便确认一下付款日期。",
+      "Ship it after the review.",
+      "Can you check whether the staging database still has last week's data?",
+      "Thanks, that fixed it.",
+      "Book a table for four at seven.",
+      "Add a note that the API rate limit resets every hour.",
+      "I'm running ten minutes late, start without me.",
+      "Rename the folder to drafts and archive the old one.",
+      "Please review the pull request before lunch.",
     ];
-    const five = history.concat([
-      // CJK sample, escaped so the source stays ASCII: checks Chinese layout in Recent.
-      { text: "\u5468\u4e94\u4e4b\u524d\u628a\u53d1\u7968\u53d1\u7ed9\u739b\u5c14\u5854\uff0c\u987a\u4fbf\u786e\u8ba4\u4e00\u4e0b\u4ed8\u6b3e\u65e5\u671f\u3002", time: "10:05" },
-      { text: "Ship it after the review.", time: "09:31" },
-    ]);
+    const now = new Date();
+    const dayIso = (off) => isoDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - off));
+    const build = () => {
+      const out = [];
+      let id = 60, n = 0;
+      [[0, 18], [1, 15], [2, 14], [5, 13]].forEach(([off, count]) => {
+        for (let k = 0; k < count; k++) {
+          const mins = 17 * 60 + 40 - k * 31;
+          out.push({ id: id--, text: POOL[n++ % POOL.length], time: `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`, date: dayIso(off) });
+        }
+      });
+      return out;
+    };
+    let all = [];
+    const recent = () => all.slice(0, 5).map(({ id, text, time }) => ({ id, text, time }));
+
     const granted = { microphone: "granted", accessibility: "granted", input_monitoring: "granted" };
     const base = {
       platform: "mac", account: "ready", account_error: null, hotkey: { label: "Right ⌥", warning: null },
-      capturing: false, mode: "hold", output: "paste", sounds: true, permissions: granted, history, version: "0.2.0",
+      capturing: false, mode: "hold", output: "paste", sounds: true, show_bar: true,
+      permissions: granted, version: "0.2.0",
     };
     const presets = {
-      logged_out: { account: "logged_out", history: [] },
-      first_run: { account: "logged_out", history: [], permissions: { microphone: "missing", accessibility: "missing", input_monitoring: "missing" } },
-      logging_in: { account: "logging_in", history: [] },
-      learning: { account: "learning", history: [] },
-      ready: {},
-      ready_full: { history: five },
-      ready_empty: { history: [] },
-      capturing: { capturing: true },
-      permissions: { permissions: { microphone: "missing", accessibility: "missing", input_monitoring: "granted" } },
-      error: { account: "error", account_error: "Login timed out.", history: [] },
-      warning: { history: five, hotkey: { label: "Ctrl + Space", warning: "Also switches input source" } },
-      win: { platform: "win", hotkey: { label: "Right Ctrl", warning: null }, permissions: {} },
+      logged_out: { account: "logged_out", list: 0 },
+      first_run: { account: "logged_out", list: 0, permissions: { microphone: "missing", accessibility: "missing", input_monitoring: "missing" } },
+      logging_in: { account: "logging_in", list: 0 },
+      learning: { account: "learning", list: 0 },
+      ready: { list: 3 },
+      ready_full: { list: 5, mode: "toggle" },
+      ready_empty: { list: 0 },
+      capturing: { list: 3, capturing: true },
+      permissions: { list: 3, permissions: { microphone: "missing", accessibility: "missing", input_monitoring: "granted" } },
+      error: { account: "error", account_error: "Login timed out.", list: 0 },
+      warning: { list: 60, hotkey: { label: "Ctrl + Space", warning: "Also switches input source" } },
+      win: { list: 3, platform: "win", hotkey: { label: "Right Ctrl", warning: null }, permissions: {} },
+      double_tap: { list: 60 },
+      history: { list: 60, view: "history" },
+      history_empty: { list: 0, view: "history" },
+      history_search_none: { list: 60, view: "history", query: "zebra crossing" },
     };
     let s;
+    const snapshot = () => Object.assign({}, s, { history: recent(), history_total: all.length });
     const load = () => {
       const key = (location.hash || "#ready").slice(1);
-      s = JSON.parse(JSON.stringify(Object.assign({}, base, presets[key] || {})));
-      state = null; ui.lastView = null; ui.waiting = {}; ui.open = null;
-      window.vox.emit({ type: "state", state: s });
+      const p = presets[key] || presets.ready;
+      // Rebuild the full list, then cut it to the preset size.
+      all = build().slice(0, p.list);
+      s = JSON.parse(JSON.stringify(Object.assign({}, base, p)));
+      delete s.list; delete s.view; delete s.query;
+      state = null; ui.lastView = null; ui.waiting = {}; ui.open = null; ui.view = null;
+      window.vox.emit({ type: "state", state: snapshot() });
+      if (p.view === "history") enterHistory(p.query || "");
     };
-    const push = (patch) => { s = Object.assign({}, s, patch); window.vox.emit({ type: "state", state: JSON.parse(JSON.stringify(s)) }); };
+    const push = (patch) => { s = Object.assign({}, s, patch); window.vox.emit({ type: "state", state: JSON.parse(JSON.stringify(snapshot())) }); };
     const after = (ms, fn) => setTimeout(fn, ms);
 
     // Mock key capture. A lone modifier is decided on key-up, so that
@@ -383,7 +636,7 @@
     });
 
     api = {
-      get_state: () => Promise.resolve(s),
+      get_state: () => Promise.resolve(snapshot()),
       login: () => {
         push({ account: "logging_in", account_error: null });
         after(1600, () => { push({ account: "learning" }); after(5000, () => push({ account: "ready" })); });
@@ -394,8 +647,16 @@
       set_mode: (m) => push({ mode: m }),
       set_output: (o) => push({ output: o }),
       set_sounds: (on) => push({ sounds: !!on }),
+      set_show_bar: (v) => push({ show_bar: v }),
       open_permission: (id) => after(1500, () => push({ permissions: Object.assign({}, s.permissions, { [id]: "granted" }) })),
       copy: (text) => { try { navigator.clipboard && navigator.clipboard.writeText(text); } catch (_) {} },
+      get_history: (query, offset, limit) => new Promise((res) => {
+        const q = String(query || "").toLowerCase();
+        const hits = q ? all.filter((h) => h.text.toLowerCase().includes(q)) : all;
+        setTimeout(() => res({ items: hits.slice(offset, offset + limit), total: hits.length }), 160);
+      }),
+      delete_history: (hid) => { all = all.filter((h) => h.id !== hid); push({}); return Promise.resolve(true); },
+      clear_history: () => { all = []; push({}); return Promise.resolve(true); },
     };
     window.addEventListener("hashchange", load);
     load();
