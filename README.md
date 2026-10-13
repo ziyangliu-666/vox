@@ -3,6 +3,16 @@
   <h1>vox</h1>
   <p>Hold a key, speak, and the text appears in any app.<br>
   Dictation for macOS and Windows that runs on your ChatGPT account. No API key.</p>
+
+  <p>
+    <a href="https://github.com/ziyangliu-666/vox/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/ziyangliu-666/vox?style=flat-square&label=release&color=111111"></a>
+    <a href="https://github.com/ziyangliu-666/vox/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/ziyangliu-666/vox/total?style=flat-square&color=111111"></a>
+    <a href="https://github.com/ziyangliu-666/vox/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/ziyangliu-666/vox/build.yml?branch=main&style=flat-square&label=build"></a>
+    <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-111111?style=flat-square&logo=apple&logoColor=white">
+    <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-111111?style=flat-square&logo=windows&logoColor=white">
+    <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-111111?style=flat-square&logo=python&logoColor=white">
+  </p>
+
   <p><a href="https://github.com/ziyangliu-666/vox/releases/latest"><b>Download</b></a></p>
   <img src="docs/dictate.webp" width="420" alt="The flow bar: listening, then the pasted text">
 </div>
@@ -31,6 +41,8 @@
 - **Windows 10/11:** run `vox-<version>.exe`. If SmartScreen warns, click **More info › Run anyway**.
 
 Then click **Log in with ChatGPT**, allow the microphone, and hold **Right ⌥** (Windows: **Right Ctrl**).
+
+vox updates itself: when a new release is out, the window footer shows **Update to x.y.z**. On macOS, permissions carry over between versions.
 
 ## FAQ
 
