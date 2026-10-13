@@ -21,7 +21,7 @@ from vox.history import History
 from vox.tray import Tray
 
 IS_MAC = sys.platform == "darwin"
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 UI = Path(__file__).with_name("ui")
 HUD_W, HUD_H = 360, 72
 # How long the result or the error stays in the flow bar.
@@ -98,6 +98,10 @@ class HudApi:
         if self._app.flowbar:
             self._app.flowbar.clicked()
 
+    def win_drag(self):
+        if self._app.winbar:
+            self._app.winbar.drag()
+
 
 class App:
     def __init__(self, demo_file: str | None = None) -> None:
@@ -139,6 +143,7 @@ class App:
         self.engine.window.events.closing += self._on_engine_closing
         self.tray = _NoTray()  # _boot builds the real one on the GUI loop.
         self.flowbar = None  # macOS only; built in _place_hud.
+        self.winbar = None  # Windows only; built in _place_hud.
         self.recorder = audio.Recorder(on_level=self._set_level)
         self.keys = hotkey.Hotkey(self.cfg.hotkey, self.cfg.mode,
                                   self._on_start, self._on_stop, self._on_cancel,
@@ -227,7 +232,15 @@ class App:
 
     def _place_hud(self) -> None:
         if not IS_MAC:
-            self.hud.move(*_win_bar_origin())
+            from vox.winbar import WinBar
+
+            def save_place(place):
+                self.cfg.flow_bar = place
+                self.cfg.save()
+
+            _wait_native(self.hud)
+            self.winbar = WinBar(self.hud, self.cfg.flow_bar, save_place, on_click=self.show_main)
+            self.winbar.restore()
             return
         from PyObjCTools import AppHelper
 
@@ -262,11 +275,15 @@ class App:
     def _hud_loaded(self) -> None:
         if self.flowbar:
             self.flowbar.sync_page()
+        if self.winbar:
+            self.winbar.restore()
         self.hud_set("idle")
 
     def reset_flow_bar(self) -> None:
         if self.flowbar:
             self.flowbar.reset()
+        if self.winbar:
+            self.winbar.reset()
 
     # ---- hotkey ------------------------------------------------------------
 
@@ -556,25 +573,6 @@ class _NoTray:
         pass
 
 
-def _win_bar_origin() -> tuple[int, int]:
-    """Bottom centre of the primary screen's work area, above the taskbar.
-
-    pywebview measures in its own units, WinForms in device pixels, so scale
-    the work area by the ratio of the two screen heights.
-    """
-    screen = webview.screens[0]
-    try:
-        from System.Windows.Forms import Screen
-
-        primary = Screen.PrimaryScreen
-        ratio = screen.height / primary.Bounds.Height
-        bottom = primary.WorkingArea.Bottom * ratio
-    except Exception:
-        bottom = screen.y + screen.height - 48  # A typical taskbar.
-    # The pill sits 14 px above the window's bottom edge (hud.html).
-    return int(screen.x + (screen.width - HUD_W) / 2), int(bottom - HUD_H + 10)
-
-
 def _wait_native(window, timeout_s: float = 10) -> None:
     """Wait until pywebview has made the window's NSWindow.
 
@@ -631,7 +629,16 @@ def _short_error(exc: Exception) -> str:
     return "Something went wrong"
 
 
+def _log_to_file() -> None:
+    """A packaged app has no console; keep its output in vox.log."""
+    if getattr(sys, "frozen", False):
+        log = open(data_dir() / "vox.log", "a", encoding="utf-8", buffering=1)
+        sys.stdout = sys.stderr = log
+        print(f"--- vox {VERSION} started {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+
 def main(demo_file: str | None = None) -> None:
+    _log_to_file()
     if not _single_instance():
         print("vox is already running.", file=sys.stderr)
         return
