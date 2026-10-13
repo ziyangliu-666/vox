@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/hero.jpg" width="780" alt="ChatGPT's voice input, as a standalone app: vox">
+  <img src="docs/banner.jpg" width="780" alt="ChatGPT's voice input, as a standalone app: vox">
   <p><b>Hold a key, speak, and the text appears in any app.</b><br>
   Dictation for macOS and Windows on your ChatGPT account. No API key.</p>
   <a href="https://github.com/ziyangliu-666/vox/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/ziyangliu-666/vox?style=flat-square&label=release&color=111111"></a>
