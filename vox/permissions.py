@@ -40,7 +40,9 @@ def _ax():
     return lib
 
 
-def status() -> dict[str, str]:
+def status(keys_seen: bool = False) -> dict[str, str]:
+    """keys_seen: the hotkey listener got a key event, so input monitoring works,
+    whatever IOHIDCheckAccess says (it answers from the state at launch)."""
     if not IS_MAC:
         return {}
     import AVFoundation
@@ -51,7 +53,8 @@ def status() -> dict[str, str]:
     return {
         "microphone": "granted" if mic == 3 else "missing",
         "accessibility": "granted" if _ax().AXIsProcessTrusted() else "missing",
-        "input_monitoring": {_GRANTED: "granted", _DENIED: "missing"}.get(listen, "unknown"),
+        "input_monitoring": "granted" if keys_seen
+        else {_GRANTED: "granted", _DENIED: "missing"}.get(listen, "unknown"),
     }
 
 

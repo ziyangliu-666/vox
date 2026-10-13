@@ -22,7 +22,7 @@ from vox.history import History
 from vox.tray import Tray
 
 IS_MAC = sys.platform == "darwin"
-VERSION = "0.4.0"
+VERSION = "0.4.1"
 UI = Path(__file__).with_name("ui")
 HUD_W, HUD_H = 360, 72
 # How long the result or the error stays in the flow bar.
@@ -80,6 +80,9 @@ class Api:
     def clear_history(self):
         self._app.history.clear()
         self._app.push()
+
+    def restart(self):
+        self._app.restart()
 
     def open_permission(self, kind):
         permissions.request(kind)
@@ -560,6 +563,25 @@ class App:
                 NSApp.activateIgnoringOtherApps_(True)
             AppHelper.callAfter(front)
 
+    def restart(self) -> None:
+        """Start a fresh vox and quit this one.
+
+        macOS grants Input Monitoring to new processes only. The new copy
+        waits a second, so this one has released the single-instance lock.
+        """
+        if getattr(sys, "frozen", False) and IS_MAC:
+            # .../vox.app/Contents/MacOS/vox -> .../vox.app
+            app = Path(sys.executable).resolve().parents[2]
+            cmd = f'sleep 1; open -n "{app}"'
+        else:
+            args = " ".join(f'"{a}"' for a in [sys.executable, "-m", "vox"])
+            cmd = f"sleep 1; cd \"{os.getcwd()}\" && {args}"
+        import subprocess
+
+        subprocess.Popen(["/bin/sh", "-c", cmd], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.quit()
+
     def quit(self) -> None:
         # pynput and AppKit threads do not all stop on request; a hard exit
         # after the windows close is the reliable way out.
@@ -618,7 +640,7 @@ class App:
         elif probe == "loading" and account == "learning" \
                 and time.monotonic() - started > 60:
             self.set_account("error", "ChatGPT did not load")
-        perms = permissions.status()
+        perms = permissions.status(keys_seen=self.keys.events_seen)
         if perms != self.perms:
             self.perms = perms
             self.push()

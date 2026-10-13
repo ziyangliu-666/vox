@@ -139,6 +139,9 @@
         const st = perms[p.id] || "unknown";
         let action;
         if (st === "granted") action = `<span class="perm-ok${ui.justGranted[p.id] ? " pop" : ""}" aria-label="On">${I.checkBig}</span>`;
+        // macOS applies Input Monitoring only to a fresh process: the
+        // running vox never sees the grant, so offer a restart, not a wait.
+        else if (ui.waiting[p.id] && p.id === "input_monitoring") action = `<button class="btn btn-primary" data-action="restart">Restart vox</button>`;
         else if (ui.waiting[p.id]) action = `<span class="perm-wait"><span class="spinner"></span>Waiting…</span>`;
         else action = `<button class="btn btn-quiet" data-action="perm" data-value="${p.id}">Open Settings</button>`;
         const dot = `<span class="dot ${st}${ui.justGranted[p.id] ? " pop" : ""}"></span>`;
@@ -511,10 +514,13 @@
       call("clear_history");
       renderList();
       render();
+    } else if (a === "restart") {
+      call("restart");
     } else if (a === "perm") {
       ui.waiting[v] = Date.now();
       // Stop waiting after 30 s even if the user closed Settings unchanged.
-      setTimeout(() => { if (ui.waiting[v] && Date.now() - ui.waiting[v] >= 30000) { delete ui.waiting[v]; render(); } }, 30010);
+      // The restart offer stays: that grant can only show after a restart.
+      if (v !== "input_monitoring") setTimeout(() => { if (ui.waiting[v] && Date.now() - ui.waiting[v] >= 30000) { delete ui.waiting[v]; render(); } }, 30010);
       render();
       call("open_permission", v);
     } else if (a === "copy") {

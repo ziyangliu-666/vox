@@ -1,6 +1,6 @@
 [project]
 name = "vox"
-version = "0.4.0"
+version = "0.4.1"
 description = "Push-to-talk dictation for macOS and Windows, powered by your ChatGPT account."
 requires-python = ">=3.12"
 dependencies = [
