@@ -14,6 +14,12 @@ uv run pyinstaller --noconfirm --clean --distpath dist --workpath build packagin
 # unsigned bundle loses them on each rebuild.
 codesign --force --deep --sign - dist/vox.app
 
-rm -f dist/vox.dmg
-hdiutil create -volname vox -srcfolder dist/vox.app -ov -format UDZO dist/vox.dmg >/dev/null
+# The disk image holds the app and a link to /Applications, so the window
+# shows where to drag it.
+rm -rf dist/dmg dist/vox.dmg
+mkdir dist/dmg
+ditto dist/vox.app dist/dmg/vox.app
+ln -s /Applications dist/dmg/Applications
+hdiutil create -volname vox -srcfolder dist/dmg -ov -format UDZO dist/vox.dmg >/dev/null
+rm -rf dist/dmg
 echo "Built dist/vox.app and dist/vox.dmg"
