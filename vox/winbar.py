@@ -275,11 +275,11 @@ class _Guides:
 class WinBar:
     """The flow bar window. host is any WinForms form on the UI thread."""
 
-    def __init__(self, host, saved, on_save, on_click) -> None:
+    def __init__(self, host, saved, on_save, on_click, on_copy) -> None:
         self.host = host
         self.form = None
         self.place = saved if saved and saved.get("edge") else {"edge": "bottom", "t": 0.5}
-        self._on_save, self._on_click = on_save, on_click
+        self._on_save, self._on_click, self._on_copy = on_save, on_click, on_copy
         self.pill = Pill()
         self.pill.dock(self.place["edge"])
         self._guides = _Guides()
@@ -365,6 +365,10 @@ class WinBar:
     def level(self, x: float) -> None:
         with self._lock:
             self.pill.level = max(0.0, min(1.0, float(x)))
+
+    @property
+    def hovered(self) -> bool:
+        return self.pill.hover
 
     def _set_hover(self, on: bool) -> None:
         with self._lock:
@@ -472,7 +476,10 @@ class WinBar:
                     self.pill.dragging = False
                 self._wake.set()
         if not moved:
-            self._on_click()
+            s = self._scale()
+            with self._lock:
+                copy = self.pill.hit_copy((sx - ox) / s, (sy - oy) / s, w / s, h / s)
+            (self._on_copy if copy else self._on_click)()
             return
         self._dock(_cursor())
 

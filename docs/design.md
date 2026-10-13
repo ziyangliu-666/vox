@@ -35,7 +35,7 @@ Set-up shows "Set up vox" and a numbered list. The first step that is not done i
 |---|---|---|---|
 | 1 | Log in | depends on `account` (see below) | Connected + "Log out" |
 | 2 | Allow access (macOS only) | one row per permission; meta "N to go" | Access on |
-| 3 | Try it | "Hold [key] and speak" ("Press" in toggle mode); the key is clickable. In hold mode with `double_tap` = `hands_free`, one faint line: "Double-tap for hands-free" | (view switches to Home) |
+| 3 | Try it | "Hold [key] and speak" ("Press" in toggle mode); the key is clickable. In hold mode with `double_tap` = `hands_free`, one faint line: "Double-tap for hands-free". Under it, the microphone and appearance pickers (see Home): a wrong microphone is what makes a first try fail | (view switches to Home) |
 
 On Windows the permission step is not shown, so "Try it" is step 2.
 
@@ -72,10 +72,11 @@ Dots: granted = accent, missing = danger, unknown = warn. `unknown` does not blo
 4. If `hotkey.warning` is not null: one amber line with a warning icon under the card.
 5. Mode: segmented "Hold to talk" / "Press to toggle".
 6. Output: segmented "Paste into app" / "Copy only".
-7. "Recent": the newest rows. Each row has the time, one line of text with an ellipsis, and a copy button. Click a row to show the full text (selectable); click again to close it. When `history_total` > 5, a quiet "All N ›" link sits at the right of the title.
-8. Footer: "vox 0.2.0" on the left, a "Sounds" switch on the right (calls `set_sounds(bool)`).
+7. Pickers, one line, native selects: a mic icon with "Default (name)" and each input device of the default host API (calls `set_input(name or null)`), and a half-circle icon with "System" / "Light" / "Dark" (calls `set_theme(value)`). A chosen device that is unplugged stays in the list as "name (not connected)"; vox records from the default until it is back. The list rescans (`refresh_inputs()`) when the window gets focus or the pointer comes over the mic picker.
+8. "Recent": the newest rows. Each row has the time, one line of text with an ellipsis, and a copy button. Click a row to show the full text (selectable); click again to close it. When `history_total` > 5, a quiet "All N ›" link sits at the right of the title.
+9. Footer: "vox 0.2.0" on the left, a "Sounds" switch on the right (calls `set_sounds(bool)`).
 
-Recent shows 5 rows, minus 1 for the double-tap line and minus 1 for the warning line. Each of those lines takes about one row of height. The tallest home view is 489 px (double-tap, warning, 3 rows). The window is 520 px, so nothing scrolls. An open row can make the page scroll; that is a user action, so it is acceptable.
+Recent shows 4 rows (the pickers take the fifth), minus 1 for the double-tap line and minus 1 for the warning line. Each of those lines takes about one row of height. The tallest home view is 489 px (double-tap, warning, 3 rows). The window is 520 px, so nothing scrolls. An open row can make the page scroll; that is a user action, so it is acceptable.
 
 ### History view
 
@@ -117,7 +118,7 @@ The capsule is dark in light and dark mode, with white content. Its width animat
 | `listening` (toggle) | ~265 x 32 | 8 bars + "[key] to stop · [esc] to cancel"; the keys are small chips |
 | `listening` (hands-free, `locked: true`) | ~270 x 32 | a small lock + 6 bars + the same hint. Upright on a side edge: the lock sits above the bars and the pill grows to 104 px. |
 | `transcribing` | ~100 x 32 | the same bars at 80 % white, in a low wave that travels left to right |
-| `done` | up to max | green check + text + grey tag "Pasted" or "Copied" (from `output`) |
+| `done` | up to max | green check + text + grey tag "Pasted" or "Copied" (from `output`). After "Pasted", a 22 px Copy button: paste put the old clipboard back, so this is the way to get the text again. A click copies the text, turns the icon into a green check and the tag into "Copied", and keeps the pill 1.2 s more. Python sets `idle` after 2 s, but not while the pointer is on the pill. |
 | `cancelled` | 40 x 32 | grey ✕; Python sets `idle` after about 0.6 s |
 | `error` | fits content | amber warning + `message`; it stays until the next hotkey press |
 
@@ -131,6 +132,8 @@ Level meter:
 - Maximum bar height is about 20 px.
 
 ## Colour tokens
+
+Dark applies with `data-theme="dark"` on `<html>`. The page sets it from `theme` in the state: "light", "dark", or for "system" the OS (`prefers-color-scheme`, followed live). The native title bar follows too: DWM dark mode on Windows, `NSApp.appearance` on macOS.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|

@@ -32,6 +32,7 @@ OK = (255, 52, 209, 122)
 WARN = (255, 255, 181, 71)
 X = (128, 255, 255, 255)
 DARK = (255, 17, 17, 17)
+COPY = 22  # The Copy button, square.
 
 # Bar envelope: centre bars are taller than edge bars (hud.html env).
 ENV = [0.4 + 0.6 * math.sin(math.pi * (i + 0.5) / N) for i in range(N)]
@@ -188,13 +189,17 @@ class Pill:
             items.append(("bars", N * 3 + (N - 1) * 2, N))
         elif p == "done":
             out = pay.get("output")
-            tag = "Copied" if out == "copy" else "Pasted" if out == "paste" else ""
-            fixed = 24 + 15 + gap + (gap + self._measure(tag, 11) if tag else 0)
+            copy = out == "paste"  # A Copy button after "Pasted".
+            tag = "Copied" if out == "copy" or pay.get("copied") else "Pasted" if out == "paste" else ""
+            fixed = (24 + 15 + gap + (gap + self._measure(tag, 11) if tag else 0)
+                     + (gap + COPY if copy else 0))
             text = " ".join((pay.get("text") or "").split()) or "Done"
             text = self._fit_head(text, CAP - fixed)
             items += [("ok", 15, None), ("text", self._measure(text, 13), text)]
             if tag:
                 items.append(("tag", self._measure(tag, 11), tag))
+            if copy:
+                items.append(("copy", COPY, bool(pay.get("copied"))))
         elif p == "error":
             text = pay.get("message") or "Something went wrong"
             avail = CAP - (24 + 15 + gap)
@@ -279,6 +284,21 @@ class Pill:
             return 4 + breathe + 14 * lv * ENV[i] * wob
         return 4 + 6 * (0.5 + 0.5 * math.sin(t * 0.009 - i * 0.65))
 
+    def hit_copy(self, px: float, py: float, ww: float, wh: float) -> bool:
+        """True if (px, py), CSS px in the window, is on the Copy button."""
+        if self.phase != "done" or self.upright:
+            return False
+        lay = self._lay()
+        x, y, w, h = self.rect(ww, wh)
+        total = sum(iw for _, iw, _ in lay["items"]) + lay["gap"] * max(0, len(lay["items"]) - 1)
+        left = x + (w - total) / 2
+        for kind, iw, _ in lay["items"]:
+            if kind == "copy":
+                # A few px of slack: the button is small.
+                return left - 3 <= px <= left + iw + 3 and abs(py - (y + h / 2)) <= iw / 2 + 3
+            left += iw + lay["gap"]
+        return False
+
     def _draw_row(self, g, x, y, w, h, z, col) -> None:
         lay = self._lay()
         total = sum(iw for _, iw, _ in lay["items"]) + lay["gap"] * max(0, len(lay["items"]) - 1)
@@ -328,6 +348,29 @@ class Pill:
                 else:
                     self._text(g, t, 12, z, px, cy, col(FG2))
                 px += (pw + inner) * z
+        elif kind == "copy":
+            brush = _brush(col(CHIP))
+            _fill_round(g, brush, x, cy - w / 2, w, w, 6 * z)
+            brush.Dispose()
+            s = 13 * z / 14  # The 14 px icon of the main window, at 13 px.
+            ox, oy = x + (w - 13 * z) / 2, cy - 6.5 * z
+            if data:  # Copied: a check.
+                pen = _pen(col(OK), 2 * s)
+                pen.StartCap = pen.EndCap = LineCap.Round
+                pen.LineJoin = LineJoin.Round
+                g.DrawLines(pen, [PointF(float(ox + px * s), float(oy + py * s))
+                                  for px, py in ((3, 7.3), (5.6, 9.9), (11, 4.1))])
+            else:  # Two sheets.
+                pen = _pen(col(FG2), 1.3 * s)
+                front = _round(ox + 4.5 * s, oy + 4.5 * s, 7 * s, 7 * s, 1.6 * s)
+                g.DrawPath(pen, front)
+                front.Dispose()
+                back = GraphicsPath()
+                back.AddLines([PointF(float(ox + px * s), float(oy + py * s)) for px, py in
+                               ((9.5, 4.5), (9.5, 2.0), (2.0, 2.0), (2.0, 9.5), (4.5, 9.5))])
+                g.DrawPath(pen, back)
+                back.Dispose()
+            pen.Dispose()
         elif kind == "lock":
             c = col(FG2)
             s = 12 * z / 12

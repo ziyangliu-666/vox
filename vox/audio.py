@@ -2,6 +2,7 @@
 
 import io
 import sys
+import threading
 import time
 import wave
 
@@ -16,6 +17,35 @@ MIN_SECONDS = 0.3
 IS_MAC = sys.platform == "darwin"
 
 
+# Windows stand-ins for "the default device": the picker has its own entry.
+_ALIASES = ("Microsoft Sound Mapper", "Primary Sound Capture Driver")
+
+
+def _inputs() -> list[tuple[int, str]]:
+    """(index, name) of each input device on the default host API.
+
+    PortAudio lists a device once per host API (on Windows: MME,
+    DirectSound, WASAPI, WDM-KS). The recorder opens the default API, so
+    only its devices count.
+    """
+    out, seen = [], set()
+    for i in sd.query_hostapis(sd.default.hostapi)["devices"]:
+        d = sd.query_devices(i)
+        if (d["max_input_channels"] > 0 and d["name"] not in seen
+                and not d["name"].startswith(_ALIASES)):
+            seen.add(d["name"])
+            out.append((i, d["name"]))
+    return out
+
+
+def default_input() -> str | None:
+    try:
+        name = sd.query_devices(kind="input")["name"]
+    except Exception:
+        return None  # No input device at all.
+    return None if name.startswith(_ALIASES) else name
+
+
 class Recorder:
     """Record mono 16 kHz audio and report a 0..1 level for the HUD waveform."""
 
@@ -23,6 +53,32 @@ class Recorder:
         self._chunks: list[np.ndarray] = []
         self._stream: sd.InputStream | None = None
         self._on_level = on_level
+        self.device: str | None = None  # Name; None is the system default.
+        # A rescan restarts PortAudio; it must not meet a stream opening.
+        self._pa = threading.Lock()
+
+    def inputs(self, refresh: bool = False) -> list[str]:
+        """Input device names. refresh rescans, so a new headset shows up.
+
+        PortAudio reads the device list once; a rescan restarts it, which
+        must not happen while a stream is open.
+        """
+        with self._pa:
+            if refresh and self._stream is None:
+                sd._terminate()
+                sd._initialize()
+            try:
+                return [name for _, name in _inputs()]
+            except Exception:
+                return []
+
+    def _device_index(self) -> int | None:
+        if not self.device:
+            return None
+        for i, name in _inputs():
+            if name == self.device:
+                return i
+        return None  # Unplugged: fall back to the system default.
 
     def _callback(self, data, *_):
         self._chunks.append(data.copy())
@@ -34,10 +90,11 @@ class Recorder:
 
     def start(self) -> None:
         self._chunks = []
-        self._stream = sd.InputStream(
-            samplerate=SAMPLE_RATE, channels=1, dtype="int16",
-            blocksize=SAMPLE_RATE // 20, callback=self._callback)
-        self._stream.start()
+        with self._pa:
+            self._stream = sd.InputStream(
+                device=self._device_index(), samplerate=SAMPLE_RATE, channels=1, dtype="int16",
+                blocksize=SAMPLE_RATE // 20, callback=self._callback)
+            self._stream.start()
 
     @property
     def active(self) -> bool:

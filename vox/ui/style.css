@@ -1,7 +1,8 @@
 /* vox shared styles.
  *
- * Tokens follow docs/design.md. Light is the default; dark comes from
- * prefers-color-scheme so the window follows the OS without a setting.
+ * Tokens follow docs/design.md. Light is the default; dark applies with
+ * data-theme="dark" on <html>. index.html sets it from the user's choice,
+ * or from prefers-color-scheme for "Match system".
  * The HUD does not use the theme colours: its capsule is dark in both
  * modes, so its own tokens live in hud.html.
  */
@@ -69,32 +70,32 @@
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1e1e21;
-    --surface: #26262a;
-    --surface-2: #303035;
-    --line: #36363c;
-    --text: #ededf0;
-    --text-2: #a6a8b0;
-    --text-3: #8a8c94;
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1e1e21;
+  --surface: #26262a;
+  --surface-2: #303035;
+  --line: #36363c;
+  --text: #ededf0;
+  --text-2: #a6a8b0;
+  --text-3: #8a8c94;
 
-    --ink: #f2f2f4;
-    --ink-text: #18181b;
-    --ink-hover: #ffffff;
+  --ink: #f2f2f4;
+  --ink-text: #18181b;
+  --ink-hover: #ffffff;
 
-    --accent: #34d17a;
-    --accent-soft: rgba(52, 209, 122, 0.14);
+  --accent: #34d17a;
+  --accent-soft: rgba(52, 209, 122, 0.14);
 
-    --danger: #ff6b60;
-    --warn: #f2ac3c;
+  --danger: #ff6b60;
+  --warn: #f2ac3c;
 
-    --thumb: #55555c;
-    --thumb-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-    --key-top: #3a3a40;
-    --key-side: #141416;
-    --focus: 0 0 0 3px rgba(52, 209, 122, 0.4);
-  }
+  --thumb: #55555c;
+  --thumb-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --key-top: #3a3a40;
+  --key-side: #141416;
+  --focus: 0 0 0 3px rgba(52, 209, 122, 0.4);
 }
 
 * { box-sizing: border-box; }
@@ -520,6 +521,44 @@ button.keys:active .keycap,
   transition: color var(--t-fast) var(--ease);
 }
 .seg button[aria-checked="true"] { color: var(--text); }
+
+/* Microphone and appearance: two quiet pickers on one line. The select
+   covers its row, so the whole pill opens the native list. */
+.prefs { display: grid; grid-template-columns: 1.6fr 1fr; gap: var(--s2); }
+.pick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--s2) 0 10px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-2);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.pick:hover { background: var(--surface-2); color: var(--text); }
+.pick:focus-within { box-shadow: var(--focus); }
+.pick svg { flex: none; }
+.pick select {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.pick select option { color: var(--text); background: var(--bg); }
 
 /* Recent transcripts */
 .recent { margin-top: var(--s5); }

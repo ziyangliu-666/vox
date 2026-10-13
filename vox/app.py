@@ -22,11 +22,13 @@ from vox.history import History
 from vox.tray import Tray
 
 IS_MAC = sys.platform == "darwin"
-VERSION = "0.3.7"
+VERSION = "0.4.0"
 UI = Path(__file__).with_name("ui")
 HUD_W, HUD_H = 360, 72
 # How long the result or the error stays in the flow bar.
-DONE_S, ERROR_S, CANCEL_S = 1.5, 3.0, 0.6
+DONE_S, ERROR_S, CANCEL_S = 2.0, 3.0, 0.6
+# After Copy in the flow bar, long enough to read "Copied".
+COPIED_S = 1.2
 
 
 class Api:
@@ -58,6 +60,15 @@ class Api:
 
     def set_show_bar(self, on):
         self._app.set_show_bar(on)
+
+    def set_input(self, name):
+        self._app.set_input(name)
+
+    def refresh_inputs(self):
+        self._app.refresh_inputs()
+
+    def set_theme(self, theme):
+        self._app.set_theme(theme)
 
     def get_history(self, query="", offset=0, limit=50):
         return self._app.history.query(query, int(offset or 0), int(limit or 50))
@@ -98,6 +109,11 @@ class HudApi:
     def clicked(self):
         if self._app.flowbar:
             self._app.flowbar.clicked()
+
+    def copy(self):
+        self._app.copy_last()
+        if self._app.flowbar:
+            self._app.flowbar.drag_end()  # Focus back to the app the user was in.
 
 
 class App:
@@ -143,6 +159,9 @@ class App:
         self.flowbar = None  # macOS only; built in _place_hud.
         self.winbar = None  # Windows only; built in _place_hud.
         self.recorder = audio.Recorder(on_level=self._set_level)
+        self.recorder.device = self.cfg.input_device
+        self.inputs = self.recorder.inputs()
+        self._last_text: str | None = None  # For Copy in the flow bar.
         self.keys = hotkey.Hotkey(self.cfg.hotkey, self.cfg.mode,
                                   self._on_start, self._on_stop, self._on_cancel,
                                   on_double=self._on_double)
@@ -163,6 +182,10 @@ class App:
             "history": self.history.recent(5),
             "history_total": self.history.total,
             "show_bar": self.cfg.show_bar,
+            "inputs": self.inputs,
+            "input": self.cfg.input_device,
+            "input_default": audio.default_input(),
+            "theme": self.cfg.theme,
             "version": VERSION,
         }
 
@@ -213,11 +236,29 @@ class App:
     def hud_later(self, token: int, seconds: float) -> None:
         def reset():
             time.sleep(seconds)
+            # The pill stays while the pointer is on it, so its Copy button
+            # does not run away from the user.
+            while self._bar_hovered():
+                time.sleep(0.2)
             with self._lock:
                 stale = token != self._hud_token
             if not stale:
                 self.hud_set("idle")
         threading.Thread(target=reset, daemon=True).start()
+
+    def _bar_hovered(self) -> bool:
+        bar = self.winbar or self.flowbar
+        return bool(bar and bar.hovered)
+
+    def copy_last(self) -> None:
+        """Copy in the flow bar: put the last transcript on the clipboard."""
+        with self._lock:
+            done = self._hud_phase == "done"
+        if not done or not self._last_text:
+            return
+        audio.copy(self._last_text)
+        token = self.hud_set("done", text=self._last_text, copied=True)
+        self.hud_later(token, COPIED_S)
 
     def _set_level(self, level: float) -> None:
         self._level = level  # Audio thread: store only; the pump sends it.
@@ -245,7 +286,7 @@ class App:
             try:
                 _wait_native(self.main)
                 bar = WinBar(self.main.native, self.cfg.flow_bar, save_place,
-                             on_click=self.show_main)
+                             on_click=self.show_main, on_copy=self.copy_last)
                 bar.restore()
             except Exception:
                 traceback.print_exc()
@@ -399,6 +440,7 @@ class App:
         self.history.add(text)
         self.push()
         if not quiet():
+            self._last_text = text
             token = self.hud_set("done", text=text)
             self.hud_later(token, DONE_S)
 
@@ -447,6 +489,47 @@ class App:
         self.cfg.sounds = sounds.enabled = bool(on)
         self.cfg.save()
         self.push()
+
+    def set_input(self, name: str | None) -> None:
+        self.cfg.input_device = name or None
+        self.recorder.device = self.cfg.input_device
+        self.cfg.save()
+        self.push()
+
+    def refresh_inputs(self) -> None:
+        inputs = self.recorder.inputs(refresh=True)
+        if inputs != self.inputs:
+            self.inputs = inputs
+            self.push()
+
+    def set_theme(self, theme: str) -> None:
+        if theme in ("system", "light", "dark"):
+            self.cfg.theme = theme
+            self.cfg.save()
+            self._apply_theme()
+            self.push()
+
+    def _apply_theme(self) -> None:
+        """Give the native title bar the theme the page draws."""
+        try:
+            if IS_MAC:
+                from AppKit import NSAppearance, NSApp
+                from PyObjCTools import AppHelper
+
+                name = {"light": "NSAppearanceNameAqua",
+                        "dark": "NSAppearanceNameDarkAqua"}.get(self.cfg.theme)
+                look = NSAppearance.appearanceNamed_(name) if name else None
+                AppHelper.callAfter(NSApp.setAppearance_, look)
+            else:
+                from System import Action
+
+                from vox import wintheme
+
+                dark = wintheme.is_dark(self.cfg.theme)
+                form = self.main.native
+                form.Invoke(Action(lambda: wintheme.set_title_bar(form, dark)))
+        except Exception:
+            traceback.print_exc()
 
     def set_output(self, output: str) -> None:
         if output in ("paste", "copy"):
@@ -586,6 +669,8 @@ class App:
             # On Windows hide() waits for the first page; the main window
             # must not wait with it.
             threading.Thread(target=self._hide_engine, daemon=True).start()
+        _wait_native(self.main)
+        self._apply_theme()
         self.show_main()
         self.keys.start()
         for target in (self._monitor, self._level_pump):

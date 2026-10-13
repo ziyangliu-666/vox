@@ -148,6 +148,11 @@
   .chip { padding: 1px 5px; border-radius: 4px; background: var(--hud-chip); color: var(--hud-fg); font-size: 11px; line-height: 16px; }
   .text { overflow: hidden; text-overflow: ellipsis; }
   .tag { font-size: 11px; color: var(--hud-fg-3); }
+  /* Copy after "Pasted": the clipboard holds the old content again by then. */
+  .copy { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--hud-chip); color: var(--hud-fg-2); }
+  .copy:hover { color: var(--hud-fg); }
+  .copy.done { color: var(--hud-ok); }
+  .copy svg { width: 13px; height: 13px; }
   /* Hands-free lock: tells the user the mic stays open without the key. */
   .ico-lock { color: var(--hud-fg-2); }
   .ico-lock svg { width: 12px; height: 12px; }
@@ -188,6 +193,7 @@
       <span class="hint" id="hint" hidden></span>
       <span class="text" id="text" hidden></span>
       <span class="tag" id="tag" hidden></span>
+      <span class="copy" id="copy" hidden aria-label="Copy"></span>
     </div>
   </div>
   </div>
@@ -203,7 +209,9 @@
   const pill = document.getElementById("pill");
   const content = document.getElementById("content");
   const bars = document.getElementById("bars");
-  const KEYS = ["lock", "ok", "warn", "x", "hint", "text", "tag"];
+  const KEYS = ["lock", "ok", "warn", "x", "hint", "text", "tag", "copy"];
+  const COPY = '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="4.5" width="7" height="7" rx="1.6"/><path d="M9.5 4.5V3.6c0-.9-.7-1.6-1.6-1.6H3.6C2.7 2 2 2.7 2 3.6v4.3c0 .9.7 1.6 1.6 1.6h.9"/></svg>';
+  const COPIED = '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.3l2.6 2.6 5.4-5.8"/></svg>';
   const els = {};
   KEYS.forEach((k) => { els[k] = document.getElementById(k); });
   for (let i = 0; i < N; i++) bars.appendChild(document.createElement("i"));
@@ -311,8 +319,11 @@
     } else if (next === "transcribing") {
       show({ bars: true });
     } else if (next === "done") {
-      const tag = p.output === "copy" ? "Copied" : p.output === "paste" ? "Pasted" : "";
-      show({ ok: true, text: " ", tag });
+      const tag = p.output === "copy" || p.copied ? "Copied" : p.output === "paste" ? "Pasted" : "";
+      const copy = p.output === "paste";
+      show({ ok: true, text: " ", tag, copy });
+      els.copy.innerHTML = p.copied ? COPIED : COPY;
+      els.copy.classList.toggle("done", !!p.copied);
       els.text.textContent = "";
       const avail = cap - Math.ceil(content.scrollWidth);
       fitHead(els.text, (p.text || "").replace(/\s+/g, " ").trim() || "Done", avail);
@@ -465,7 +476,8 @@
     e.preventDefault();
     pill.setPointerCapture(e.pointerId);
     const r = pill.getBoundingClientRect();
-    drag = { sx: e.clientX, sy: e.clientY, dx: r.left + r.width / 2 - e.clientX, dy: r.top + r.height / 2 - e.clientY, moved: false };
+    drag = { sx: e.clientX, sy: e.clientY, dx: r.left + r.width / 2 - e.clientX, dy: r.top + r.height / 2 - e.clientY, moved: false,
+             copy: !els.copy.hidden && !!e.target.closest("#copy") };
   });
   pill.addEventListener("pointermove", (e) => {
     if (!drag) return;
@@ -488,7 +500,7 @@
     const d = drag;
     drag = null;
     try { pill.releasePointerCapture(e.pointerId); } catch (_) {}
-    if (!d.moved) { api("clicked"); return; }
+    if (!d.moved) { api(d.copy ? "copy" : "clicked"); return; }
     // Drop the hover look now, inside the same animation as the landing;
     // left to Python's pointer poll it would shrink the pill a moment later.
     pill.classList.remove("dragging", "hover");
@@ -570,6 +582,7 @@
       hands_free: { phase: "listening", mode: "toggle", locked: true, key },
       transcribing: { phase: "transcribing", key },
       done: { phase: "done", output: "paste", key, text: "Let's move the review to Thursday afternoon, if that works for everyone." },
+      done_copied: { phase: "done", output: "paste", copied: true, key, text: "Let's move the review to Thursday afternoon, if that works for everyone." },
       done_copy: { phase: "done", output: "copy", key, text: "Remind me to send the invoice to Marta before Friday." },
       // CJK sample, escaped so the source stays ASCII: checks Chinese layout in the pill.
       done_long_zh: { phase: "done", output: "paste", key, text: "\u6211\u4eec\u628a\u8bc4\u5ba1\u4f1a\u6539\u5230\u5468\u56db\u4e0b\u5348\u5427\uff0c\u5982\u679c\u5927\u5bb6\u90fd\u65b9\u4fbf\u7684\u8bdd\uff0c\u6211\u660e\u5929\u4e0a\u5348\u628a\u8bae\u7a0b\u53d1\u51fa\u6765\u3002" },

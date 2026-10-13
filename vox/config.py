@@ -40,6 +40,10 @@ class Config:
     show_bar: bool = True
     # Where the user dragged the flow bar; None means bottom centre.
     flow_bar: dict | None = None
+    # Microphone by device name; None means the system default. A name,
+    # because device numbers change when devices come and go.
+    input_device: str | None = None
+    theme: str = "system"  # "system", "light" or "dark"
 
     @classmethod
     def load(cls) -> "Config":

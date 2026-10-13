@@ -108,6 +108,10 @@ class FlowBar:
     def clicked(self) -> None:
         self._on_click()
 
+    @property
+    def hovered(self) -> bool:
+        return self._hover
+
     # ---- placement ---------------------------------------------------------
 
     def _screen(self):
