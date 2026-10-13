@@ -17,8 +17,23 @@ import sys
 import webview
 
 IS_MAC = sys.platform == "darwin"
+IS_WIN = sys.platform == "win32"
 if IS_MAC:
     from PyObjCTools import AppHelper
+
+
+def _on_ui_thread(form, fn) -> None:
+    """Run fn(form) on the WinForms UI thread that owns the form."""
+    from System import Action
+
+    form.Invoke(Action(lambda: fn(form)))
+
+
+def _win_opacity(form, visible: bool) -> None:
+    form.Opacity = 1.0 if visible else 0.0
+    form.ShowInTaskbar = visible
+    if not form.Visible:
+        form.Show()
 
 from vox.config import data_dir
 
@@ -131,6 +146,8 @@ class ChatGPTWindow:
         """Bring the window up for the user to log in."""
         if IS_MAC:
             AppHelper.callAfter(self._reveal)
+        elif IS_WIN:
+            _on_ui_thread(self.window.native, lambda f: _win_opacity(f, visible=True))
         self.window.show()
 
     def hide(self) -> None:
@@ -143,6 +160,11 @@ class ChatGPTWindow:
         """
         if IS_MAC:
             AppHelper.callAfter(self._conceal)
+        elif IS_WIN:
+            # Same idea on Windows: WebView2 tells a page in a hidden window
+            # that it is hidden. A shown window at opacity 0 takes no clicks
+            # and is out of the taskbar, but the page stays "visible".
+            _on_ui_thread(self.window.native, lambda f: _win_opacity(f, visible=False))
         else:
             self.window.hide()
 

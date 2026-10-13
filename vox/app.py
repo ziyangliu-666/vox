@@ -21,7 +21,7 @@ from vox.history import History
 from vox.tray import Tray
 
 IS_MAC = sys.platform == "darwin"
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 UI = Path(__file__).with_name("ui")
 HUD_W, HUD_H = 360, 72
 # How long the result or the error stays in the flow bar.
@@ -128,7 +128,11 @@ class App:
             "vox flow bar", html=_page("hud.html"), js_api=HudApi(self),
             width=HUD_W, height=HUD_H,
             frameless=True, transparent=True, on_top=True, focus=False,
-            easy_drag=False, shadow=False, hidden=True, background_color="#000000")
+            easy_drag=False, shadow=False, background_color="#000000",
+            # macOS shows the bar itself, without activating vox. On Windows
+            # pywebview makes the background transparent only for a window
+            # created visible; created hidden, the bar sits on a white box.
+            hidden=IS_MAC)
         # The bar page starts hidden; show the idle capsule once it can draw.
         self.hud.events.loaded += self._hud_loaded
         self.engine = chatgpt.ChatGPTWindow(hidden=True)
@@ -223,10 +227,7 @@ class App:
 
     def _place_hud(self) -> None:
         if not IS_MAC:
-            screen = webview.screens[0]
-            self.hud.move(screen.x + (screen.width - HUD_W) // 2,
-                          screen.y + screen.height - HUD_H - 16)
-            self.hud.show()
+            self.hud.move(*_win_bar_origin())
             return
         from PyObjCTools import AppHelper
 
@@ -553,6 +554,25 @@ class App:
 class _NoTray:
     def set_state(self, state: str) -> None:
         pass
+
+
+def _win_bar_origin() -> tuple[int, int]:
+    """Bottom centre of the primary screen's work area, above the taskbar.
+
+    pywebview measures in its own units, WinForms in device pixels, so scale
+    the work area by the ratio of the two screen heights.
+    """
+    screen = webview.screens[0]
+    try:
+        from System.Windows.Forms import Screen
+
+        primary = Screen.PrimaryScreen
+        ratio = screen.height / primary.Bounds.Height
+        bottom = primary.WorkingArea.Bottom * ratio
+    except Exception:
+        bottom = screen.y + screen.height - 48  # A typical taskbar.
+    # The pill sits 14 px above the window's bottom edge (hud.html).
+    return int(screen.x + (screen.width - HUD_W) / 2), int(bottom - HUD_H + 10)
 
 
 def _wait_native(window, timeout_s: float = 10) -> None:
