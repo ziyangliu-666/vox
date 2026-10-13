@@ -260,7 +260,11 @@
       `<button class="switch" role="switch" aria-checked="${!!on}" data-action="${action}">${label}<span class="track"></span></button>`;
     const sws = view === "home"
       ? `<span class="switches">${sw(s.show_bar !== false, "bar", "Flow bar")}${sw(s.sounds, "sounds", "Sounds")}</span>` : "";
-    return `<span>vox ${esc(s.version || "")}</span>${sws}`;
+    // A downloaded update takes the version's place: one click installs it.
+    const ver = s.update && s.update.ready
+      ? `<button class="update-btn" data-action="update">Update to ${esc(s.update.version)}</button>`
+      : `<span>vox ${esc(s.version || "")}</span>`;
+    return `${ver}${sws}`;
   }
 
   // ---------- history view ----------
@@ -514,6 +518,10 @@
       call("clear_history");
       renderList();
       render();
+    } else if (a === "update") {
+      t.disabled = true;
+      t.textContent = "Updating…";
+      call("install_update");
     } else if (a === "restart") {
       call("restart");
     } else if (a === "perm") {

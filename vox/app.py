@@ -19,6 +19,7 @@ import webview
 from vox import audio, chatgpt, hotkey, permissions, sounds
 from vox.config import Config, data_dir
 from vox.history import History
+from vox.updater import Updater
 from vox.tray import Tray
 
 IS_MAC = sys.platform == "darwin"
@@ -84,6 +85,9 @@ class Api:
     def restart(self):
         self._app.restart()
 
+    def install_update(self):
+        self._app.install_update()
+
     def open_permission(self, kind):
         permissions.request(kind)
 
@@ -134,6 +138,7 @@ class App:
         self.account_error: str | None = None
         self.capturing = False
         self.history = History()
+        self.updater = Updater(VERSION)
         self.perms = permissions.status()
         self._lock = threading.RLock()
         self._engine_lock = threading.Lock()  # One transcription at a time.
@@ -194,6 +199,8 @@ class App:
             "input_default": audio.default_input(),
             "theme": self.cfg.theme,
             "version": VERSION,
+            "update": ({"version": self.updater.latest["version"], "ready": bool(self.updater.file)}
+                       if self.updater.latest else None),
         }
 
     def key_label(self) -> str:
@@ -570,6 +577,44 @@ class App:
                 NSApp.activateIgnoringOtherApps_(True)
             AppHelper.callAfter(front)
 
+    def _update_loop(self) -> None:
+        time.sleep(15)  # Let start-up and login settle first.
+        while True:
+            self.check_update(quiet=True)
+            time.sleep(6 * 3600)
+
+    def check_update(self, quiet: bool = False) -> None:
+        """Look for a newer release and download it; tell the user unless quiet."""
+        if not self.updater.enabled:
+            if not quiet:
+                token = self.hud_set("error", message="Updates need the installed app")
+                self.hud_later(token, ERROR_S)
+            return
+        found = self.updater.check()
+        if found and self.updater.download():
+            print(f"[vox] update {self.updater.latest['version']} ready", flush=True)
+            self.push()
+            if not quiet:
+                self.show_main()
+        elif not quiet:
+            msg = "Update check failed" if self.updater.error and not found else "vox is up to date"
+            token = self.hud_set("done" if msg.endswith("date") else "error",
+                                 text=msg, message=msg)
+            self.hud_later(token, DONE_S + 1)
+        if self.updater.error:
+            print(f"[vox] {self.updater.error}", flush=True)
+            self.updater.error = None
+
+    def install_update(self) -> None:
+        try:
+            self.updater.install()
+        except Exception as exc:
+            print(f"[vox] update failed: {exc}", flush=True)
+            token = self.hud_set("error", message="Update failed; see vox.log")
+            self.hud_later(token, ERROR_S)
+            return
+        self.quit()
+
     def restart(self) -> None:
         """Start a fresh vox and quit this one.
 
@@ -690,6 +735,8 @@ class App:
             ("Show or hide flow bar", self.toggle_bar),
             ("Reset flow bar position", self.reset_flow_bar),
             (None, None),
+            ("Check for updates", lambda: threading.Thread(
+                target=self.check_update, daemon=True).start()),
             ("Quit vox", self.quit),
         ])
         if IS_MAC:
@@ -708,7 +755,7 @@ class App:
         self._apply_theme()
         self.show_main()
         self.keys.start()
-        for target in (self._monitor, self._level_pump):
+        for target in (self._monitor, self._level_pump, self._update_loop):
             threading.Thread(target=target, daemon=True).start()
         self.push()
 

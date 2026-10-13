@@ -848,3 +848,8 @@ button.keys:active .keycap,
 /* Fixed hotkey behaviour, stated under the title. */
 .hotkey-sub { margin-top: 2px; font-size: var(--fs-xs); line-height: 1.35; color: var(--text-3); }
 .switches { display: inline-flex; gap: var(--s4); }
+
+/* Footer: a ready update replaces the version number. */
+.update-btn { border: 0; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: var(--fs-xs); font-weight: 600; background: var(--accent); color: #fff; cursor: pointer; }
+.update-btn:hover { filter: brightness(1.08); }
+.update-btn:disabled { opacity: 0.6; cursor: default; }
