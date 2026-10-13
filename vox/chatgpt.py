@@ -150,6 +150,7 @@ class ChatGPTWindow:
         if IS_MAC:
             AppHelper.callAfter(self._reveal)
         elif IS_WIN:
+            self._wait_webview()
             _on_ui_thread(self.window.native, lambda f: _win_opacity(f, visible=True))
         self.window.show()
 
@@ -167,9 +168,19 @@ class ChatGPTWindow:
             # Same idea on Windows: WebView2 tells a page in a hidden window
             # that it is hidden. A shown window at opacity 0 takes no clicks
             # and is out of the taskbar, but the page stays "visible".
+            self._wait_webview()
             _on_ui_thread(self.window.native, lambda f: _win_opacity(f, visible=False))
         else:
             self.window.hide()
+
+    def _wait_webview(self, timeout_s: float = 60) -> None:
+        """Wait until WebView2 has made its control and loaded a first page.
+
+        Setting ShowInTaskbar makes WinForms recreate the window handle. If
+        WebView2 is still making its control in that window, it gives up
+        with E_ABORT, and the window stays blank for good.
+        """
+        self.window.events.before_load.wait(timeout_s)
 
     def _conceal(self) -> None:
         win = self.window.native

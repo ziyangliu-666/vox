@@ -579,13 +579,22 @@ class App:
         else:
             # The bar is a nicety; login and dictation must not wait on it.
             threading.Thread(target=self._place_hud, daemon=True).start()
-        _wait_native(self.engine.window)
-        self.engine.hide()
+        if IS_MAC:
+            _wait_native(self.engine.window)
+            self.engine.hide()
+        else:
+            # On Windows hide() waits for the first page; the main window
+            # must not wait with it.
+            threading.Thread(target=self._hide_engine, daemon=True).start()
         self.show_main()
         self.keys.start()
         for target in (self._monitor, self._level_pump):
             threading.Thread(target=target, daemon=True).start()
         self.push()
+
+    def _hide_engine(self) -> None:
+        _wait_native(self.engine.window)
+        self.engine.hide()
 
     def run(self) -> None:
         webview.start(self._boot, private_mode=False,
