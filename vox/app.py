@@ -22,7 +22,7 @@ from vox.history import History
 from vox.tray import Tray
 
 IS_MAC = sys.platform == "darwin"
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 UI = Path(__file__).with_name("ui")
 HUD_W, HUD_H = 360, 72
 # How long the result or the error stays in the flow bar.
@@ -558,6 +558,9 @@ class App:
                 # Open on the Space the user is on, not the one vox started on.
                 self.main.native.setCollectionBehavior_(1 << 1)  # MoveToActiveSpace
                 self.main.native.makeKeyAndOrderFront_(None)
+                # A Dock icon and a Cmd+Tab entry while the window is open,
+                # so the user can find it again behind other windows.
+                NSApp.setActivationPolicy_(0)  # Regular
                 # A menu bar app is not active by default, so its window
                 # would open behind the frontmost app.
                 NSApp.activateIgnoringOtherApps_(True)
@@ -593,8 +596,14 @@ class App:
         threading.Timer(0.5, lambda: os._exit(0)).start()
 
     def _on_main_closing(self):
-        # Closing the window keeps vox running in the menu bar.
+        # Closing the window keeps vox running in the menu bar, and the Dock
+        # icon goes away with the window.
         self.main.hide()
+        if IS_MAC:
+            from AppKit import NSApp
+            from PyObjCTools import AppHelper
+
+            AppHelper.callAfter(NSApp.setActivationPolicy_, 1)  # Accessory
         return False
 
     def _on_engine_closing(self):
