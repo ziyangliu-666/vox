@@ -14,11 +14,19 @@ on:
 
 jobs:
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+      # The newest Xcode on the image: compiling the .icon needs Xcode 26.
+      - name: Select Xcode
+        run: |
+          xc=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xc"
+          xcodebuild -version
       - run: packaging/build_mac.sh
+        env:
+          VOX_REQUIRE_ICON: "1"
       - name: Put the version in the file name
         run: |
           v=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)

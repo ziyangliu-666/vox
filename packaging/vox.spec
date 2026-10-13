@@ -39,6 +39,9 @@ if IS_MAC:
         version=VERSION,
         info_plist={
             "CFBundleDisplayName": "vox",
+            # macOS 26 takes the icon from Assets.car (build_mac.sh);
+            # older systems use the .icns above.
+            "CFBundleIconName": "AppIcon",
             "CFBundleShortVersionString": VERSION,
             "LSUIElement": True,  # Menu bar app: no Dock icon.
             "LSMinimumSystemVersion": "12.0",
