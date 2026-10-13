@@ -22,7 +22,7 @@ from vox.history import History
 from vox.tray import Tray
 
 IS_MAC = sys.platform == "darwin"
-VERSION = "0.3.6"
+VERSION = "0.3.7"
 UI = Path(__file__).with_name("ui")
 HUD_W, HUD_H = 360, 72
 # How long the result or the error stays in the flow bar.
@@ -504,32 +504,41 @@ class App:
         """Follow the login state of the engine window and the permission state."""
         started = time.monotonic()
         while True:
-            probe = self.engine.probe()
-            with self._lock:
-                account = self.account
-            if probe == "ready" and account in ("logging_in", "learning", "logged_out", "error"):
-                self.set_account("learning")
-                self.engine.hide()
-                try:
-                    self.engine.learn()
-                    self.set_account("ready")
-                    if self._retry_after_login:
-                        self._retry_after_login = False
-                        self.retry_last()
-                    if self.demo_file:
-                        threading.Thread(target=self._demo, daemon=True).start()
-                except Exception as exc:
-                    self.set_account("error", _short_error(exc))
-            elif probe == "logged_out" and account in ("ready", "learning"):
-                self.set_account("logged_out")
-            elif probe == "loading" and account == "learning" \
-                    and time.monotonic() - started > 30:
-                self.set_account("error", "ChatGPT did not load")
-            perms = permissions.status()
-            if perms != self.perms:
-                self.perms = perms
-                self.push()
+            # One failed round must not end the loop: with no monitor, the
+            # set-up stays on "Getting ready" for good.
+            try:
+                self._monitor_once(started)
+            except Exception:
+                traceback.print_exc()
             time.sleep(1)
+
+    def _monitor_once(self, started: float) -> None:
+        probe = self.engine.probe()
+        with self._lock:
+            account = self.account
+        if probe == "ready" and account in ("logging_in", "learning", "logged_out", "error"):
+            self.set_account("learning")
+            self.engine.hide()
+            try:
+                self.engine.learn()
+                self.set_account("ready")
+                if self._retry_after_login:
+                    self._retry_after_login = False
+                    self.retry_last()
+                if self.demo_file:
+                    threading.Thread(target=self._demo, daemon=True).start()
+            except Exception as exc:
+                self.set_account("error", _short_error(exc))
+        elif probe == "logged_out" and account in ("ready", "learning"):
+            self.set_account("logged_out")
+        # A cold WebView2 can take well over 20 s to load chatgpt.com.
+        elif probe == "loading" and account == "learning" \
+                and time.monotonic() - started > 60:
+            self.set_account("error", "ChatGPT did not load")
+        perms = permissions.status()
+        if perms != self.perms:
+            self.perms = perms
+            self.push()
 
     def _demo(self) -> None:
         """Play a file through the full flow bar path, for UI review without a voice."""

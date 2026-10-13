@@ -101,14 +101,17 @@ class ChatGPTWindow:
 
     def probe(self) -> str:
         """Return "ready", "logged_out", or "loading"."""
-        url = self.window.get_current_url() or ""
-        if not url.startswith(HOME):
-            # Somewhere in the login flow on another host.
-            return "logged_out"
         try:
+            # get_current_url() waits up to 20 s for the first page load and
+            # then raises "Main window failed to start"; a slow chatgpt.com
+            # is still loading, not broken.
+            url = self.window.get_current_url() or ""
+            if not url.startswith(HOME):
+                # Somewhere in the login flow on another host.
+                return "logged_out"
             return self._js(_PROBE) or "loading"
         except Exception:
-            return "loading"  # The page is between navigations.
+            return "loading"  # Not loaded yet, or between navigations.
 
     def wait_until_ready(self, timeout_s: float) -> None:
         end = time.monotonic() + timeout_s
