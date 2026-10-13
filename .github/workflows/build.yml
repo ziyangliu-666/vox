@@ -19,10 +19,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: packaging/build_mac.sh
+      - name: Put the version in the file name
+        run: |
+          v=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          mv dist/vox.dmg "dist/vox-$v.dmg"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
-          name: vox-macos
-          path: dist/vox.dmg
+          name: vox-${{ env.VERSION }}-macos
+          path: dist/vox-*.dmg
 
   windows:
     runs-on: windows-latest
@@ -31,10 +36,16 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: packaging/build_win.ps1
         shell: pwsh
+      - name: Put the version in the file name
+        shell: bash
+        run: |
+          v=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          mv dist/vox.exe "dist/vox-$v.exe"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
-          name: vox-windows
-          path: dist/vox.exe
+          name: vox-${{ env.VERSION }}-windows
+          path: dist/vox-*.exe
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || inputs.release != ''
@@ -52,6 +63,6 @@ jobs:
           TAG: ${{ inputs.release || github.ref_name }}
         # A manual run creates the tag on the commit it built.
         run: >
-          gh release create "$TAG" vox.dmg vox.exe
+          gh release create "$TAG" vox-*.dmg vox-*.exe
           --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"
           --title "vox $TAG" --generate-notes

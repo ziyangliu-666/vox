@@ -21,7 +21,7 @@ from vox.history import History
 from vox.tray import Tray
 
 IS_MAC = sys.platform == "darwin"
-VERSION = "0.3.4"
+VERSION = "0.3.5"
 UI = Path(__file__).with_name("ui")
 HUD_W, HUD_H = 360, 72
 # How long the result or the error stays in the flow bar.
@@ -85,8 +85,6 @@ class HudApi:
     def pill_rect(self, rect):
         if self._app.flowbar:
             self._app.flowbar.pill_rect(rect)
-        if self._app.winbar:
-            self._app.winbar.pill = (rect[2], rect[3])
 
     def save_place(self, place):
         if self._app.flowbar:
@@ -99,10 +97,6 @@ class HudApi:
     def clicked(self):
         if self._app.flowbar:
             self._app.flowbar.clicked()
-
-    def win_drag(self):
-        if self._app.winbar:
-            self._app.winbar.drag()
 
 
 class App:
@@ -130,17 +124,18 @@ class App:
             width=400, height=520, resizable=False)
         self.main.events.closing += self._on_main_closing
         self.main.events.shown += self._main_follows_space
-        self.hud = webview.create_window(
-            "vox flow bar", html=_page("hud.html"), js_api=HudApi(self),
-            width=HUD_W, height=HUD_H,
-            frameless=True, transparent=True, on_top=True, focus=False,
-            easy_drag=False, shadow=False, background_color="#000000",
-            # macOS shows the bar itself, without activating vox. On Windows
-            # pywebview makes the background transparent only for a window
-            # created visible; created hidden, the bar sits on a white box.
-            hidden=IS_MAC)
-        # The bar page starts hidden; show the idle capsule once it can draw.
-        self.hud.events.loaded += self._hud_loaded
+        # macOS draws the flow bar in a page; Windows draws it natively
+        # (winbar.py), because a see-through WebView2 window is not reliable.
+        self.hud = None
+        if IS_MAC:
+            self.hud = webview.create_window(
+                "vox flow bar", html=_page("hud.html"), js_api=HudApi(self),
+                width=HUD_W, height=HUD_H,
+                frameless=True, transparent=True, on_top=True, focus=False,
+                easy_drag=False, shadow=False, background_color="#000000",
+                hidden=True)  # FlowBar shows it without activating vox.
+            # The bar page starts hidden; show the idle capsule once it can draw.
+            self.hud.events.loaded += self._hud_loaded
         self.engine = chatgpt.ChatGPTWindow(hidden=True)
         self.engine.window.events.closing += self._on_engine_closing
         self.tray = _NoTray()  # _boot builds the real one on the GUI loop.
@@ -200,10 +195,13 @@ class App:
             self._hud_phase = phase
             self._hud_token += 1
             token = self._hud_token
-        payload = json.dumps({"phase": phase, "mode": self.cfg.mode, "key": self.key_label(),
-                              "output": self.cfg.output, **extra})  # extra may override mode
+        payload = {"phase": phase, "mode": self.cfg.mode, "key": self.key_label(),
+                   "output": self.cfg.output, **extra}  # extra may override mode
         try:
-            self.hud.run_js(f"window.hud && window.hud.set({payload})")
+            if self.winbar:
+                self.winbar.set(payload)
+            elif self.hud:
+                self.hud.run_js(f"window.hud && window.hud.set({json.dumps(payload)})")
         except Exception:
             pass
         self.tray.set_state({"idle": "idle", "listening": "listening",
@@ -228,7 +226,10 @@ class App:
             time.sleep(0.05)
             if self._hud_phase == "listening":
                 try:
-                    self.hud.run_js(f"window.hud && window.hud.level({self._level:.3f})")
+                    if self.winbar:
+                        self.winbar.level(self._level)
+                    elif self.hud:
+                        self.hud.run_js(f"window.hud && window.hud.level({self._level:.3f})")
                 except Exception:
                     pass
 
@@ -240,9 +241,11 @@ class App:
                 self.cfg.flow_bar = place
                 self.cfg.save()
 
-            _wait_native(self.hud)
-            self.winbar = WinBar(self.hud, self.cfg.flow_bar, save_place, on_click=self.show_main)
+            _wait_native(self.main)
+            self.winbar = WinBar(self.main.native, self.cfg.flow_bar, save_place,
+                                 on_click=self.show_main)
             self.winbar.restore()
+            self.hud_set(self._hud_phase if self._hud_phase != "hidden" else "idle")
             return
         from PyObjCTools import AppHelper
 
@@ -277,8 +280,6 @@ class App:
     def _hud_loaded(self) -> None:
         if self.flowbar:
             self.flowbar.sync_page()
-        if self.winbar:
-            self.winbar.restore()
         self.hud_set("idle")
 
     def reset_flow_bar(self) -> None:

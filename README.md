@@ -27,8 +27,8 @@
 
 ## Install
 
-- **macOS 12+, Apple silicon:** open `vox.dmg` and drag vox to Applications. On first launch, allow it in System Settings › Privacy & Security › **Open Anyway**.
-- **Windows 10/11:** run `vox.exe`. If SmartScreen warns, click **More info › Run anyway**.
+- **macOS 12+, Apple silicon:** open `vox-<version>.dmg` and drag vox to Applications. On first launch, allow it in System Settings › Privacy & Security › **Open Anyway**.
+- **Windows 10/11:** run `vox-<version>.exe`. If SmartScreen warns, click **More info › Run anyway**.
 
 Then click **Log in with ChatGPT**, allow the microphone, and hold **Right ⌥** (Windows: **Right Ctrl**).
 
