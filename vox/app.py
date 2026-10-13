@@ -11,6 +11,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
 import webview
@@ -21,7 +22,7 @@ from vox.history import History
 from vox.tray import Tray
 
 IS_MAC = sys.platform == "darwin"
-VERSION = "0.3.5"
+VERSION = "0.3.6"
 UI = Path(__file__).with_name("ui")
 HUD_W, HUD_H = 360, 72
 # How long the result or the error stays in the flow bar.
@@ -241,11 +242,18 @@ class App:
                 self.cfg.flow_bar = place
                 self.cfg.save()
 
-            _wait_native(self.main)
-            self.winbar = WinBar(self.main.native, self.cfg.flow_bar, save_place,
-                                 on_click=self.show_main)
-            self.winbar.restore()
+            try:
+                _wait_native(self.main)
+                bar = WinBar(self.main.native, self.cfg.flow_bar, save_place,
+                             on_click=self.show_main)
+                bar.restore()
+            except Exception:
+                traceback.print_exc()
+                print("vox: the flow bar could not start", flush=True)
+                return
+            self.winbar = bar
             self.hud_set(self._hud_phase if self._hud_phase != "hidden" else "idle")
+            print("vox: flow bar ready", flush=True)
             return
         from PyObjCTools import AppHelper
 
@@ -557,7 +565,11 @@ class App:
             (None, None),
             ("Quit vox", self.quit),
         ])
-        self._place_hud()
+        if IS_MAC:
+            self._place_hud()
+        else:
+            # The bar is a nicety; login and dictation must not wait on it.
+            threading.Thread(target=self._place_hud, daemon=True).start()
         _wait_native(self.engine.window)
         self.engine.hide()
         self.show_main()

@@ -29,6 +29,7 @@ window's DPI.
 import ctypes
 import threading
 import time
+import traceback
 
 from vox.winpill import Pill
 
@@ -379,8 +380,9 @@ class WinBar:
                 self._wake.clear()
             try:
                 self._ui(self._render)
-            except Exception as e:
-                print(f"vox: flow bar render: {e}", flush=True)
+            except Exception:
+                traceback.print_exc()
+                print("vox: flow bar render failed", flush=True)
                 time.sleep(1)
             time.sleep(FRAME_S)
 
