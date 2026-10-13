@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a release with this tag, e.g. v0.3.4 (empty: build only)"
+        required: false
+        default: ""
 
 jobs:
   macos:
@@ -32,7 +37,7 @@ jobs:
           path: dist/vox.exe
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release != ''
     needs: [macos, windows]
     runs-on: ubuntu-latest
     permissions:
@@ -44,6 +49,9 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release || github.ref_name }}
+        # A manual run creates the tag on the commit it built.
         run: >
-          gh release create "$GITHUB_REF_NAME" vox.dmg vox.exe
-          --repo "$GITHUB_REPOSITORY" --title "vox $GITHUB_REF_NAME" --generate-notes
+          gh release create "$TAG" vox.dmg vox.exe
+          --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"
+          --title "vox $TAG" --generate-notes
