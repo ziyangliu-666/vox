@@ -13,10 +13,16 @@ each magnet, and for the target a bright rail, an alignment line and a
 ghost of where the pill lands. It is drawn with GDI+, not WebView2, and
 lets every click through.
 
-Both windows are see-through by a colour key: pywebview's transparent=True
-clears only the WebView2 background, and the form under it stays grey.
-A colour key has no partial alpha, so hud.html drops the pill's soft
-shadow on Windows (html.win).
+The bar window: pywebview's transparent=True clears only the WebView2
+background (pywebview documents transparent as not supported on Windows),
+so the form under it shows its grey back colour. A colour key does not
+work with WebView2 (WebView2Feedback #118). What does work, and is what
+Tauri does: DWM blur-behind with an empty region on the top-level window,
+which makes DWM honour the window's per-pixel alpha, and a black back
+colour, which GDI paints with alpha 0. WebView2's transparent pixels show
+that, so the pill keeps its anti-aliased edge and its soft shadow.
+
+The guides window has no WebView2; a colour key is enough there.
 
 All sizes are WinForms device pixels; the CSS sizes from hud.html are
 scaled by the window's DPI.
@@ -42,12 +48,26 @@ WS_EX_LAYERED, WS_EX_NOACTIVATE = 0x80000, 0x8000000
 HWND_TOPMOST = -1
 SWP_FLAGS = 0x1 | 0x2 | 0x10  # NOSIZE | NOMOVE | NOACTIVATE
 
-# Own handle to user32, so the argtypes below do not leak into pywebview's.
+
+
+class _BlurBehind(ctypes.Structure):
+    _fields_ = [("dwFlags", ctypes.c_ulong), ("fEnable", ctypes.c_int),
+                ("hRgnBlur", ctypes.c_void_p), ("fTransitionOnMaximized", ctypes.c_int)]
+
+
+DWM_BB_ENABLE, DWM_BB_BLURREGION = 0x1, 0x2
+
+# Own handles to the DLLs, so the argtypes below do not leak into pywebview's.
 _user32 = ctypes.WinDLL("user32")
 _user32.GetWindowLongW.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _user32.SetWindowLongW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_long]
 _user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _user32.IsWindowVisible.argtypes = [ctypes.c_void_p]
+_gdi32 = ctypes.WinDLL("gdi32")
+_gdi32.CreateRectRgn.restype = ctypes.c_void_p
+_gdi32.DeleteObject.argtypes = [ctypes.c_void_p]
+_dwmapi = ctypes.WinDLL("dwmapi")
+_dwmapi.DwmEnableBlurBehindWindow.argtypes = [ctypes.c_void_p, ctypes.POINTER(_BlurBehind)]
 _user32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p] + [ctypes.c_int] * 4 + [ctypes.c_uint]
 
 
@@ -72,6 +92,23 @@ def _hwnd(form) -> int:
 def _add_ex_style(form, bits: int) -> None:
     h = _hwnd(form)
     _user32.SetWindowLongW(h, GWL_EXSTYLE, _user32.GetWindowLongW(h, GWL_EXSTYLE) | bits)
+
+
+def _alpha_window(form) -> None:
+    """Let DWM show the form's per-pixel alpha; its back colour is alpha 0.
+
+    The tauri-apps/tao recipe for a transparent WebView2 window.
+    """
+    from System.Drawing import Color
+
+    form.BackColor = Color.Black  # GDI writes alpha 0: fully transparent.
+    region = _gdi32.CreateRectRgn(0, 0, -1, -1)  # Empty: no blur, only alpha.
+    bb = _BlurBehind(DWM_BB_ENABLE | DWM_BB_BLURREGION, 1, region, 0)
+    hr = _dwmapi.DwmEnableBlurBehindWindow(_hwnd(form), ctypes.byref(bb))
+    _gdi32.DeleteObject(region)
+    if hr != 0:
+        print(f"vox: DwmEnableBlurBehindWindow failed: {hr:#x}", flush=True)
+    form.Invalidate(True)
 
 
 def _see_through(form) -> None:
@@ -226,12 +263,7 @@ class WinBar:
         self.pill = (60, 14)  # The pill's size in CSS px; hud.html reports it.
         self._guides = _Guides()
 
-        def init(form):
-            _see_through(form)
-            # TransparencyKey makes WinForms rewrite the extended style and
-            # drop the no-activate bit that pywebview set for focus=False.
-            _add_ex_style(form, WS_EX_NOACTIVATE)
-        self._ui(init)
+        self._ui(_alpha_window)
 
     # ---- WinForms helpers --------------------------------------------------
 
@@ -277,7 +309,6 @@ class WinBar:
 
     def restore(self) -> None:
         edge = self.place["edge"]
-        self.window.run_js("document.documentElement.classList.add('win')")
         self.window.run_js(f"window.hud && window.hud.dock('{edge}')")
         self._set_bounds(*self._bounds(self._work_area(), edge, self.place.get("t", 0.5)))
 

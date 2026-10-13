@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(SPECPATH).parent
 IS_MAC = sys.platform == "darwin"
-VERSION = "0.3.3"
+VERSION = "0.3.4"
 
 a = Analysis(
     [str(ROOT / "packaging" / "launch.py")],
