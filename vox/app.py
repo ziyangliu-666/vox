@@ -3,6 +3,8 @@
 Threads:
 - main thread: the GUI loop (pywebview / AppKit). Nothing else may block it.
 - pynput thread: hotkey events. Callbacks only flip state and hand off.
+- audio thread (audio.Recorder): opens and closes the microphone. The
+  pynput thread waits for it only up to a time limit.
 - worker threads: transcription, engine monitor, HUD level pump.
 """
 
@@ -30,6 +32,9 @@ HUD_W, HUD_H = 360, 72
 DONE_S, ERROR_S, CANCEL_S = 2.0, 3.0, 0.6
 # After Copy in the flow bar, long enough to read "Copied".
 COPIED_S = 1.2
+# The clip that was recorded when the audio system locked up. The restarted
+# app sends it like "Retry last clip".
+PENDING = "pending.wav"
 
 
 class Api:
@@ -144,6 +149,7 @@ class App:
         self._engine_lock = threading.Lock()  # One transcription at a time.
         self._last_failed: bytes | None = None
         self._retry_after_login = False
+        self._take_pending_clip()
         self._level = 0.0
         self._hud_phase = "idle"
         self._hud_token = 0  # Newest HUD phase; older timed resets must not fire.
@@ -353,6 +359,38 @@ class App:
 
     # ---- hotkey ------------------------------------------------------------
 
+    def _take_pending_clip(self) -> None:
+        """Queue the clip that the last run saved before its restart."""
+        path = data_dir() / PENDING
+        try:
+            wav = path.read_bytes()
+            path.unlink()
+        except OSError:
+            return
+        print(f"[vox] resending the clip from before the restart ({len(wav)} bytes)",
+              flush=True)
+        self._last_failed = wav
+        # The monitor sends it once the engine is ready, as after a login.
+        self._retry_after_login = True
+
+    def _audio_stuck(self, exc: audio.AudioStuck) -> None:
+        """The audio system locked up: keep the clip and restart vox.
+
+        A locked CoreAudio client never recovers in the same process, and
+        the main thread may be locked with it. So this touches no window:
+        it saves the clip, starts a new vox and ends this process.
+        """
+        print(f"[vox] {exc}; restarting", flush=True)
+        if exc.clip:
+            try:
+                (data_dir() / PENDING).write_bytes(exc.clip)
+            except OSError as err:
+                print(f"[vox] could not keep the clip: {err}", flush=True)
+        try:
+            _relaunch()
+        finally:
+            os._exit(1)
+
     def _on_start(self, locked: bool = False) -> bool:
         print("[vox] hotkey start", flush=True)
         with self._lock:
@@ -375,7 +413,11 @@ class App:
         sounds.start()
         try:
             self.recorder.start()
-        except Exception:
+        except audio.AudioStuck as exc:
+            self._audio_stuck(exc)
+            return False
+        except Exception as exc:
+            print(f"[vox] microphone failed: {exc}", flush=True)
             token = self.hud_set("error", message="No microphone")
             self.hud_later(token, ERROR_S)
             return False
@@ -387,7 +429,11 @@ class App:
         return "lock" if self._on_start(locked=True) else None
 
     def _on_stop(self) -> None:
-        wav = self.recorder.stop()
+        try:
+            wav = self.recorder.stop()
+        except audio.AudioStuck as exc:
+            self._audio_stuck(exc)
+            return
         print(f"[vox] hotkey stop, clip {len(wav or b'')} bytes", flush=True)
         sounds.stop()
         if not wav:
@@ -396,7 +442,12 @@ class App:
         threading.Thread(target=self._transcribe, args=(wav,), daemon=True).start()
 
     def _on_cancel(self) -> None:
-        self.recorder.stop()
+        try:
+            self.recorder.stop()
+        except audio.AudioStuck as exc:
+            exc.clip = None  # Cancelled: the user does not want this clip.
+            self._audio_stuck(exc)
+            return
         token = self.hud_set("cancelled")
         self.hud_later(token, CANCEL_S)
 
@@ -619,19 +670,9 @@ class App:
         """Start a fresh vox and quit this one.
 
         macOS grants Input Monitoring to new processes only. The new copy
-        waits a second, so this one has released the single-instance lock.
+        waits for this one to release the single-instance lock.
         """
-        if getattr(sys, "frozen", False) and IS_MAC:
-            # .../vox.app/Contents/MacOS/vox -> .../vox.app
-            app = Path(sys.executable).resolve().parents[2]
-            cmd = f'sleep 1; open -n "{app}"'
-        else:
-            args = " ".join(f'"{a}"' for a in [sys.executable, "-m", "vox"])
-            cmd = f"sleep 1; cd \"{os.getcwd()}\" && {args}"
-        import subprocess
-
-        subprocess.Popen(["/bin/sh", "-c", cmd], start_new_session=True,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _relaunch()
         self.quit()
 
     def quit(self) -> None:
@@ -796,22 +837,57 @@ def _page(name: str) -> str:
     return html.replace('<link rel="stylesheet" href="style.css">', f"<style>{css}</style>")
 
 
-def _single_instance() -> bool:
-    """Hold a lock for the life of the process; False if another vox has it."""
+def _relaunch() -> None:
+    """Start a new vox. It waits for this process to release the lock."""
+    import subprocess
+
+    frozen = getattr(sys, "frozen", False)
+    env = dict(os.environ)
+    if frozen and IS_MAC:
+        # Through Launch Services, so the new process is vox.app itself,
+        # with its own privacy permissions. -n: this copy is still running.
+        cmd = ["open", "-n", str(Path(sys.executable).resolve().parents[2])]
+    elif frozen:
+        cmd = [sys.executable]
+        # A onefile vox.exe that starts its own path again: with the
+        # inherited variables, the new one counts as a subprocess of this
+        # one and runs from this one's temporary folder, which is deleted
+        # when this one ends. This tells it to unpack its own.
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    else:
+        cmd = [sys.executable, "-m", "vox"]
+    if sys.platform == "win32":
+        flags = {"creationflags": 0x00000008 | 0x00000200}  # DETACHED | NEW_PROCESS_GROUP
+    else:
+        flags = {"start_new_session": True}
+    subprocess.Popen(cmd, cwd=os.getcwd(), env=env, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **flags)
+
+
+def _single_instance(wait_s: float = 10) -> bool:
+    """Hold a lock for the life of the process; False if another vox has it.
+
+    A restarted vox starts while the old one is still ending, so the lock
+    gets a few seconds before this copy gives up.
+    """
     global _lock_file
     _lock_file = open(data_dir() / "vox.lock", "a+")
-    try:
-        if sys.platform == "win32":
-            import msvcrt
+    end = time.monotonic() + wait_s
+    while True:
+        try:
+            if sys.platform == "win32":
+                import msvcrt
 
-            msvcrt.locking(_lock_file.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
+                msvcrt.locking(_lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
 
-            fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return True
-    except OSError:
-        return False
+                fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            if time.monotonic() > end:
+                return False
+            time.sleep(0.25)
 
 
 _lock_file = None
