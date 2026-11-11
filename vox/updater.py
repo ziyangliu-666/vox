@@ -20,12 +20,15 @@ Only a packaged build updates itself; running from source never does.
 import hashlib
 import json
 import os
+import ssl
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
+
+import certifi
 
 from vox.config import data_dir
 
@@ -43,10 +46,24 @@ def _version(text: str) -> tuple:
     return tuple(parts)
 
 
+def _tls() -> ssl.SSLContext:
+    """The system's CA certificates plus certifi's.
+
+    The Python in the macOS app looks for CA files in the paths of the
+    machine that built it. They do not exist on the user's Mac, so every
+    check failed with CERTIFICATE_VERIFY_FAILED. certifi ships its own
+    bundle inside the app. The system store stays in, for Windows machines
+    behind a proxy that has its own root certificate.
+    """
+    ctx = ssl.create_default_context()
+    ctx.load_verify_locations(cafile=certifi.where())
+    return ctx
+
+
 def _get(url: str, timeout: float = 20):
     req = urllib.request.Request(url, headers={
         "User-Agent": "vox-updater", "Accept": "application/vnd.github+json"})
-    return urllib.request.urlopen(req, timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout, context=_tls())
 
 
 class Updater:
@@ -178,6 +195,11 @@ class Updater:
         bat = Path(tempfile.gettempdir()) / f"vox-update-{int(time.time())}.cmd"
         bat.write_text(
             "@echo off\r\n"
+            # The script inherits this process's PyInstaller variables. The
+            # new vox.exe has the same path, so without a reset it would
+            # take itself for a subprocess of this one and run from this
+            # one's temporary folder, which is gone by then.
+            "set PYINSTALLER_RESET_ENVIRONMENT=1\r\n"
             f":wait\r\ntasklist /FI \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul "
             "&& (timeout /t 1 /nobreak >nul & goto wait)\r\n"
             f'del /f /q "{old}" 2>nul\r\n'

@@ -4,7 +4,8 @@ version = "0.4.6"
 description = "Push-to-talk dictation for macOS and Windows, powered by your ChatGPT account."
 requires-python = ">=3.12"
 dependencies = [
-    "sounddevice>=0.5",
+    "certifi>=2024.2",
+    "sounddevice>=0.5 ; sys_platform == 'win32'",
     "numpy>=1.26",
     "pynput>=1.7.7",
     "pyperclip>=1.9",
